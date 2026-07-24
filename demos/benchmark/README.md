@@ -59,9 +59,10 @@ throughput-latency curve (no pre-set win target). It is the run that shows where
 pulls ahead of RE2 under load - or, honestly, where the network still dominates. Expect ~24
 min per engine for the full default sweep; dial it down with the `DP4_*` env knobs.
 
-**Latest live results (2026-07-23):**
+**Latest live results (2026-07-23 / DP4 2026-07-24):**
 - **DP2:** Themis == Aergia == oracle, **53/53**; 25 secrets stripped (redact + last-4 mask).
 - **DP3:** Themis == Aergia == oracle, **13/13**; 8 secrets stripped (redact/mask/drop); 878 -> 737 downstream tokens.
+- **DP4:** small payloads Themis **29k rps** vs RE2 17k (up to **1.7x**, 2.5x tighter p99); medium ~parity; large bandwidth-bound on both (Themis higher ceiling, collapses at 2048 concurrency). Whole curve in [datapoint4/DEMO-NOTES.md](datapoint4/DEMO-NOTES.md).
 
 ### Getting the Aergia/RE2 parity column
 

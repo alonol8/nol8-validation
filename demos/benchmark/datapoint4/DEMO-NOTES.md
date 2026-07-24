@@ -63,6 +63,33 @@ throughput scaled ~24x from c=1->32 (near-linear, unsaturated) while Aergia
 scaled ~4.8x (CPU saturating). Whether Themis overtakes at c=512/1024 is what the
 full sweep decides.
 
+## Sweep results (2026-07-24, high-concurrency focus 128-2048)
+
+50k-record / 5k-rule corpus, both engines, 30s measured per cell. Three regimes:
+
+| payload | Themis peak rps | RE2 peak rps | Themis p99 @512 | RE2 p99 @512 | verdict |
+|---|---|---|---|---|---|
+| small (2.6 KB) | **29,174** (c=512) | 17,719 | **34 ms** | 87 ms | Themis up to 1.7x, 2.5x tighter tail |
+| medium (34 KB) | 5,890 | 5,085 | 194 ms | 274 ms | ~parity, Themis ~15% ahead |
+| large (293 KB) | 570 (c=1024) | 486 | 1,645 ms | 1,988 ms | bandwidth-bound both; see cliff |
+
+- **Small, frequent payloads are the win:** Themis is higher-throughput AND
+  lower-latency at every concurrency level. The fixed pipeline absorbs request
+  rate where RE2's tail climbs. This is the common inline-guardrail workload.
+- **Medium narrows to parity** as the per-request byte cost (transport, not
+  matching) starts to dominate and both engines pay it.
+- **Large is bandwidth-bound on both** (~135-159 MiB/s); they saturate by ~128
+  concurrency, so adding connections only inflates latency. Themis holds a
+  slightly higher ceiling through 1024, then **collapses at 2048 (17,225 errors,
+  ~2 rps)** while RE2 degrades gracefully (2,185 errors) - a hard parallel-transfer
+  ceiling on Themis's byte-bound front end, not a matcher issue. Provision
+  large-payload concurrency below that cliff.
+- **Caveat:** at 2048 on tiny payloads both engines wobble (Themis 111 errors and
+  a dip from its 512 peak; RE2 jumps) - at ~26k rps of 2.6 KB requests the 8-core
+  driver box is a plausible limiter. Themis's real peak is at 512.
+
+Report: `run.json` (committed) -> `throughput-report.html` (below).
+
 ## Reproduce (on EC2 - has Go 1.22 and reaches the engines)
 
 ```bash
