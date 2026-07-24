@@ -1,5 +1,5 @@
 {
-  "_comment": "One benchmark run = one of these. make-report.py renders it into the on-brand report. Presentation-free where possible; the generator derives colors/styles from role/kind. Copy follows NOL8 brand voice: no em dashes, no exclamation marks, no emoji; Aergia is always the RE2 benchmark, never a NOL8 product. This report leads with the pre-index OPTIMIZATION use case (clean the data before it becomes embeddings); governance parity with the incumbent is the trust anchor.",
+  "_comment": "One benchmark run = one of these. make-report.py renders it into the on-brand report. Presentation-free where possible; the generator derives colors/styles from role/kind. Copy follows NOL8 brand voice: no em dashes, no exclamation marks, no emoji; Aergia is always the RE2 benchmark, never a NOL8 product. This report leads with the pre-index OPTIMIZATION use case (clean the data before it becomes embeddings); governance parity with the incumbent is the trust anchor. Honest action model (consistent with DP2/DP3): NOL8 does deterministic literal replacement only; this use case uses two LIVE actions, redact (govern a known value to a token) and drop (strip repeated filler to nothing), both oracle-verified. It makes no route/block enforcement claim - those are signals covered in DP2/DP3, roadmap for native enforcement.",
 
   "identifier": { "left": "NOL8 · Pre-Index Optimization", "right": "Data Point 01 / Benchmark" },
   "navLabel": "Pre-Index Optimization · Data Point 01",
@@ -66,6 +66,7 @@
     { "term": "Corpus",       "def": "1,000-chunk synthetic pre-index corpus, run identically through every approach." },
     { "term": "Policy",       "def": "One literal policy, two jobs: govern known values to tokens (denied entities, watched customers, compromised accounts, payment cards, internal projects, blocked IPs), and strip the ten most-repeated low-value filler sentences to nothing. The same file is deployed to both engines." },
     { "term": "Engines",      "def": "Themis, the NOL8 FPGA (:443), and Aergia, our stand-up of Google RE2 (:444) as the benchmark. Same data, same policy. Do nothing forwards everything." },
+    { "term": "Actions",      "def": "NOL8 does deterministic literal replacement only. This use case uses two LIVE actions: redact (govern a known value to a token, e.g. [CUSTOMER]) and drop (strip repeated filler to nothing). Both transform the payload and are oracle-verified. Last-four masking, and route / block signals, are covered in Data Points 02 and 03; NOL8 does not route or block a message today, and native enforcement is on the roadmap." },
     { "term": "Oracle",       "def": "Each engine's output is adjudicated against the validation framework's independent Aho-Corasick matcher (leftmost-longest, non-overlapping literal replacement). Themis matched it 1000 of 1000; Aergia diverged on 876, every divergence a strip." },
     { "term": "Reduction",    "def": "Measured as tokens forwarded versus Do nothing. Themis forwards 15,343 of 43,005 tokens, a 64.3% cut. Redaction is length-neutral; the volume cut is the filler strip." },
     { "term": "Filler list",  "def": "Corpus-derived: the most-repeated exact sentences, which carry no per-chunk retrieval value. A real deployment supplies its own list; the mechanism is identical." },
@@ -145,7 +146,7 @@
 
   "footer": {
     "tagline": "The AI data plane. Hardware-class, inline, wire-speed. Clean the data before it becomes cost.",
-    "next": [ "Data Point 02 · Throughput at load", "Inline governance on the fabric" ],
+    "next": [ "Data Point 02 · Pre/post-inference control", "Keep known secrets out of the model and the response" ],
     "copyright": "© 2026 Nol8. All rights reserved.",
     "confidential": "Private & Confidential"
   }
