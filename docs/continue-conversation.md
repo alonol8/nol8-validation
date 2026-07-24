@@ -9,10 +9,14 @@ continue without reconstructing context from chat history.
 > is stable, **236 framework tests passing**; (2) the **demo environment** is the
 > active work, and it now has THREE data points at different stages.
 >
-> - **Data Point 1 (pre-index) - DONE, shipped.** On-brand report leads with the
->   optimization use case: Themis forwards **64.3% fewer tokens**, oracle-verified
->   **1000/1000**; the RE2 baseline (Aergia) **corrupts 876/1000** on strip. Single
->   fresh clean run; full "show your work" receipts appendix.
+> - **Data Point 1 (pre-index) - DONE + honest-pass DONE (2026-07-24).** On-brand report
+>   leads with the optimization use case: Themis forwards **64.3% fewer tokens**, oracle-
+>   verified **1000/1000**; the RE2 baseline (Aergia) **corrupts 876/1000** on strip.
+>   Honest-model consistency pass: DP1 was already honest (actions = **redact** (govern to
+>   token) + **drop** (strip), both LIVE; no route/block enforcement claim); added the
+>   honest-model note + an "Actions" method term naming redact/drop, fixed a stale DP2
+>   footer pointer. No engine change (optimization.nol = govern + strip already matches
+>   the model). All three data points now consistent on the honest action model.
 > - **Data Point 2 (pre/post-inference) - HONEST-MODEL reframe DONE (2026-07-23).**
 >   Same honest split as DP3 ([[nol8-is-substitution-not-enforcement]]): **redact / mask
 >   LIVE** (NOL8 transforms the prompt + output, oracle-verified), **route / block
