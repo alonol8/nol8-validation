@@ -47,6 +47,7 @@ demos/benchmark/pre-index-report.html
 demos/benchmark/datapoint2/pre-post-report.html
 demos/benchmark/datapoint3/agent-mesh-report.html
 demos/benchmark/datapoint4/throughput-report.html
+demos/benchmark/datapoint4/rulecount-report.html
 
 # PDF renders of docs (yzane.markdown-pdf), generated on demand to share with
 # engineering. Regenerated when needed, so not versioned. The extension is
