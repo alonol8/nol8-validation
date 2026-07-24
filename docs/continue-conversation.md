@@ -61,9 +61,21 @@ continue without reconstructing context from chat history.
 > DNS record to the VPN resolver AND advertise+allow those subnets/ports (:443/:444/:8444)
 > to VPN clients. All execution stays on EC2 until both land.
 >
-> **Current focus / NEXT:** (a) run the Aergia parity column of the representative set
-> once :444 returns -> DP2 fully done; (b) final DP2 copy look; (c) build DP3 per the
-> plan; (d) Track B (`agentic-mesh-lab`) is separate and larger.
+> **>>> TOP PRIORITY / NEXT (set 2026-07-24):** build the **THROUGHPUT-AT-LOAD benchmark**
+> ("Data Point 4"). The user's framing: "our numbers only show meaningful under load."
+> DP1-3 prove correctness + parity + payload reduction, but the FPGA advantage (Themis vs
+> RE2/Aergia) only shows when concurrent load saturates the software engine and the FPGA
+> stays flat. Full design + open decisions in **`demos/benchmark/DP4-THROUGHPUT-PLAN.md`**.
+> Need: a large generated corpus + a concurrent load driver (off-the-shelf for a first
+> read, then a Go driver reusing `callEngineProcess`), run on EC2 -> argus edge (same VPC,
+> low RTT), measuring throughput + latency percentiles + saturation points, Themis vs
+> Aergia on the identical policy. Report the whole throughput-latency curve honestly.
+>
+> **All 3 data points are DONE and honest-model-consistent** (redact/mask/drop live;
+> route/block roadmap). Reports: `pre-index-report.html`, `datapoint2/pre-post-report.html`,
+> `datapoint3/agent-mesh-report.html`. Smaller open items: representative sets (DP2/DP3) to
+> the new action model; Mac direct access (engineering: DNS record + route for 10.8.11.254,
+> see [docs/ENGINE-ACCESS-REQUEST.md]); native route/block enforcement (roadmap).
 
 This file is project *state*. Three companions carry the rest:
 
