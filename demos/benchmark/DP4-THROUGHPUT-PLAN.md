@@ -86,7 +86,25 @@ advantage - if it's there, the curve proves it; if the network dominates all the
 that's the honest finding and tells us the next thing to change (get closer, bigger
 payloads, more concurrency).
 
-## Open decisions for the user (before the build)
+## Decisions (resolved 2026-07-24)
+
+- **Driver: straight to the Go driver** (skip the off-the-shelf phase). Build a concurrent
+  Go load driver reusing `callEngineProcess`: worker pool with a concurrency knob,
+  connection reuse (`http.Transport{MaxIdleConnsPerHost}`), HDR-histogram percentiles,
+  emits a CSV per (engine, concurrency, payload) cell. One integrated, integrity-clean
+  artifact consistent with DP1-3.
+- **Corpus: fresh enterprise-DLP, large.** Generate well past the 5k-rule / 10k-record
+  floor with `validate generate` (`config/workloads/enterprise-dlp.yaml`). Deterministic,
+  reproducible; feed records as request bodies; same policy to both engines.
+- **Win criterion: show the whole curve, no pre-set target.** Report both engines'
+  throughput-latency curves + saturation knees + percentile tables honestly and let the
+  data say what it says. No cherry-picked concurrency level; call out whatever bounded the
+  run (driver, network/TLS front-end, or the matching core).
+- **Still to set at build time (I'll propose defaults):** the load profile - concurrency
+  sweep (e.g. 1, 8, 32, 128, 512, 1024), payload sizes (small/med/large), and run
+  duration per cell (warm-up + steady-state). And the exact corpus record/rule count.
+
+## Original open decisions (for reference)
 
 1. **Driver:** off-the-shelf first (B) for a quick read, or straight to the Go driver (A)?
 2. **Load profile:** target concurrency levels + payload sizes + run duration.
