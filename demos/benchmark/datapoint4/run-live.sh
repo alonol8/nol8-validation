@@ -21,6 +21,12 @@ source .venv/bin/activate
 set -a; source config/demo.env; source .env; set +a
 export PATH="$HOME/.local/go/bin:$PATH"
 
+# High concurrency needs one file descriptor per open connection; the default
+# soft limit (often 1024) would turn real throughput into spurious "too many
+# open files" errors. Raise it as high as the hard limit allows.
+ulimit -n 65536 2>/dev/null || ulimit -n "$(ulimit -Hn)" 2>/dev/null || true
+echo ">> fd limit (ulimit -n): $(ulimit -n)"
+
 PACK="demos/benchmark/datapoint4"
 RESULTS="${DP4_RESULTS:-$ROOT/$PACK/results}"
 mkdir -p "$RESULTS"
