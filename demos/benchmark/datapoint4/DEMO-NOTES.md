@@ -34,6 +34,35 @@ p50/p95/p99/p99.9 latency, min/max/mean, errors, and a tail-overflow count.
   from the enterprise-dlp size distribution.
 - **Corpus:** 50,000 records / 5,000 rules, deterministic seed.
 
+## Diagnostic finding: latency is byte-bound, not match-bound (2026-07-24)
+
+A payload-size probe at concurrency 1 (`probe-live.sh` -> `probe-size.py`, clean
+vs matched bodies, same policy on both engines) characterized the per-request cost:
+
+| size | Themis clean | Themis matched | Aergia clean | Aergia matched |
+|---|---|---|---|---|
+| 16KB | 13.9ms | 13.4ms | 2.3ms | 3.3ms |
+| 64KB | 49.0ms | 48.9ms | 4.1ms | 5.5ms |
+| 256KB | 187.5ms | 187.0ms | 9.4ms | 11.4ms |
+| 512KB | 372.9ms | 373.3ms | 16.8ms | 20.4ms |
+
+- **Themis: clean ≈ matched at every size** — the matching core adds ~nothing.
+  Latency scales **linearly with bytes**, ~0.73 ms/KB, i.e. **~1.4 MB/s per
+  connection**. The per-request cost is the **data path** (front-end / streaming),
+  not the FPGA matcher.
+- **Aergia (RE2): ~30 MB/s per connection**, ~20x faster per large request; its
+  software path adds a small, real matching increment (clean -> matched).
+- **1 MB bodies errored on BOTH engines** — a shared ~1 MB request-size cap at the
+  edge, not an engine difference. The driver's "large" bucket is capped below it
+  (786 KB) so a 413 can't contaminate the throughput numbers.
+
+Implication: at concurrency 1, Themis is transport-bound and slower per large
+request - state that plainly. But that is *per connection*. The FPGA thesis is
+about **parallel** streams: in the throughput smoke, Themis large-payload
+throughput scaled ~24x from c=1->32 (near-linear, unsaturated) while Aergia
+scaled ~4.8x (CPU saturating). Whether Themis overtakes at c=512/1024 is what the
+full sweep decides.
+
 ## Reproduce (on EC2 - has Go 1.22 and reaches the engines)
 
 ```bash

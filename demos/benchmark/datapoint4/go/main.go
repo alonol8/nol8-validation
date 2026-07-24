@@ -62,7 +62,11 @@ func defaultBuckets() []bucket {
 	return []bucket{
 		{name: "small", lo: 0, hi: 4096, cap: 8192},
 		{name: "medium", lo: 4097, hi: 65536, cap: 2048},
-		{name: "large", lo: 65537, hi: 0, cap: 512},
+		// Upper bound below the ~1MB shared edge request-size cap: bodies at/over
+		// it get a 413 on BOTH engines (measured), which would contaminate the
+		// throughput numbers rather than measure either engine. Records above this
+		// (the corpus "near_limit" band) are simply excluded from the sweep.
+		{name: "large", lo: 65537, hi: 786432, cap: 512},
 	}
 }
 
