@@ -898,6 +898,247 @@ def mesh_flows(d) -> str:
   </section>"""
 
 
+# ---- DP4: throughput at load (curves + percentile table) ----
+
+# Engine line colors. Themis is the accent; Aergia gets a warm gold that reads on
+# both themes and never collides with the green. Overridable per engine in run.json.
+_DP4_ENGINE_COLOR = {"themis": "var(--accent)", "aergia": "#E0A63C"}
+
+
+def _dp4_color(engine: str, engines_meta: dict) -> str:
+    meta = engines_meta.get(engine, {})
+    return meta.get("color") or _DP4_ENGINE_COLOR.get(engine, "var(--fg2)")
+
+
+def _dp4_label(engine: str, engines_meta: dict) -> str:
+    meta = engines_meta.get(engine, {})
+    return meta.get("label") or engine.capitalize()
+
+
+def _nice_max(v: float) -> float:
+    """Round a max value up to a clean axis bound (1/2/5 x 10^n)."""
+    if v <= 0:
+        return 1.0
+    import math
+    exp = math.floor(math.log10(v))
+    base = 10 ** exp
+    for m in (1, 2, 2.5, 5, 10):
+        if v <= m * base:
+            return m * base
+    return 10 * base
+
+
+def _fmt_num(v: float) -> str:
+    if v >= 1000:
+        return f"{v:,.0f}"
+    if v >= 100:
+        return f"{v:.0f}"
+    if v >= 10:
+        return f"{v:.1f}"
+    return f"{v:.2f}"
+
+
+def _svg_line_chart(series, xs, ymax, ylabel, title, unit="") -> str:
+    """A small, theme-aware line chart. x is log-scaled over the concurrency
+    values `xs`; y is linear 0..ymax. `series` is a list of
+    {label, color, points:[(x,y)]}. Colors may be CSS vars, so it themes itself.
+    """
+    import math
+    W, H = 560, 320
+    pad_l, pad_r, pad_t, pad_b = 58, 18, 40, 46
+    pw, ph = W - pad_l - pad_r, H - pad_t - pad_b
+    xmin, xmax = min(xs), max(xs)
+    lxmin, lxmax = math.log(xmin), math.log(xmax)
+
+    def xp(x):
+        if lxmax == lxmin:
+            return pad_l + pw / 2
+        return pad_l + (math.log(x) - lxmin) / (lxmax - lxmin) * pw
+
+    def yp(y):
+        return pad_t + ph - (y / ymax if ymax else 0) * ph
+
+    parts = [f'<svg viewBox="0 0 {W} {H}" role="img" aria-label="{esc(title)}" '
+             f'style="width:100%;max-width:{W}px;height:auto;font-family:var(--font-ui);">']
+    parts.append(f'<text x="{pad_l}" y="22" fill="var(--fg1)" font-size="13" '
+                 f'font-weight="600">{esc(title)}</text>')
+    # horizontal gridlines + y labels
+    for i in range(5):
+        gy = pad_t + ph - i / 4 * ph
+        val = ymax * i / 4
+        parts.append(f'<line x1="{pad_l}" y1="{gy:.1f}" x2="{pad_l+pw}" y2="{gy:.1f}" '
+                     f'stroke="var(--hairline-soft)" stroke-width="1"/>')
+        parts.append(f'<text x="{pad_l-8}" y="{gy+3.5:.1f}" fill="var(--fg3)" font-size="10.5" '
+                     f'text-anchor="end" style="font-variant-numeric:tabular-nums;">{_fmt_num(val)}</text>')
+    parts.append(f'<text x="14" y="{pad_t+ph/2:.1f}" fill="var(--fg3)" font-size="10.5" '
+                 f'text-anchor="middle" transform="rotate(-90 14 {pad_t+ph/2:.1f})">{esc(ylabel)}</text>')
+    # x ticks at each concurrency value
+    for x in xs:
+        px = xp(x)
+        parts.append(f'<line x1="{px:.1f}" y1="{pad_t+ph}" x2="{px:.1f}" y2="{pad_t+ph+4}" '
+                     f'stroke="var(--hairline)" stroke-width="1"/>')
+        parts.append(f'<text x="{px:.1f}" y="{pad_t+ph+18:.1f}" fill="var(--fg3)" font-size="10.5" '
+                     f'text-anchor="middle" style="font-variant-numeric:tabular-nums;">{x}</text>')
+    parts.append(f'<text x="{pad_l+pw/2:.1f}" y="{H-6}" fill="var(--fg3)" font-size="10.5" '
+                 f'text-anchor="middle">concurrency (in-flight requests, log scale)</text>')
+    # series
+    for s in series:
+        pts = [(xp(x), yp(y)) for x, y in s["points"]]
+        d = "M" + " L".join(f"{px:.1f},{py:.1f}" for px, py in pts)
+        parts.append(f'<path d="{d}" fill="none" stroke="{s["color"]}" stroke-width="2.5" '
+                     f'stroke-linejoin="round" stroke-linecap="round"/>')
+        for px, py in pts:
+            parts.append(f'<circle cx="{px:.1f}" cy="{py:.1f}" r="3.2" fill="{s["color"]}"/>')
+    # legend
+    lx, ly = pad_l + 8, pad_t + 4
+    for s in series:
+        parts.append(f'<line x1="{lx}" y1="{ly}" x2="{lx+18}" y2="{ly}" stroke="{s["color"]}" stroke-width="2.5"/>')
+        parts.append(f'<circle cx="{lx+9}" cy="{ly}" r="3.2" fill="{s["color"]}"/>')
+        parts.append(f'<text x="{lx+24}" y="{ly+3.5}" fill="var(--fg2)" font-size="11" '
+                     f'font-weight="600">{esc(s["label"])}</text>')
+        lx += 34 + len(s["label"]) * 7
+    parts.append("</svg>")
+    return "".join(parts)
+
+
+def _dp4_cells_index(cells):
+    """Index cells by (engine, payload) -> sorted list by concurrency."""
+    idx = {}
+    for c in cells:
+        idx.setdefault((c["engine"], c["payload"]), []).append(c)
+    for k in idx:
+        idx[k].sort(key=lambda c: c["concurrency"])
+    return idx
+
+
+def throughput(d) -> str:
+    cells = d["cells"]
+    engines = d.get("engineOrder") or sorted({c["engine"] for c in cells})
+    engines_meta = d.get("engines", {})
+    payloads = d.get("payloadOrder") or sorted({c["payload"] for c in cells})
+    idx = _dp4_cells_index(cells)
+    xs_all = sorted({c["concurrency"] for c in cells})
+
+    blocks = ""
+    for pay in payloads:
+        # y bounds across engines for this payload
+        rps_vals = [c["rps"] for e in engines for c in idx.get((e, pay), [])]
+        p99_vals = [c["p99_ms"] for e in engines for c in idx.get((e, pay), [])]
+        if not rps_vals:
+            continue
+        rps_max = _nice_max(max(rps_vals))
+        p99_max = _nice_max(max(p99_vals))
+        xs = sorted({c["concurrency"] for e in engines for c in idx.get((e, pay), [])})
+
+        rps_series, p99_series = [], []
+        for e in engines:
+            pts = idx.get((e, pay), [])
+            if not pts:
+                continue
+            color, label = _dp4_color(e, engines_meta), _dp4_label(e, engines_meta)
+            rps_series.append({"label": label, "color": color,
+                               "points": [(c["concurrency"], c["rps"]) for c in pts]})
+            p99_series.append({"label": label, "color": color,
+                               "points": [(c["concurrency"], c["p99_ms"]) for c in pts]})
+
+        avg_bytes = next((c.get("avg_body_bytes") for e in engines for c in idx.get((e, pay), [])), 0)
+        cap = f"{pay} payload &middot; ~{int(avg_bytes):,} bytes/request"
+        blocks += f"""
+        <div style="margin-top:34px;">
+          <div style="color:var(--fg1);font-weight:700;font-size:15px;margin-bottom:2px;text-transform:capitalize;">{esc(pay)} payload</div>
+          <div style="color:var(--fg3);font-size:12px;margin-bottom:14px;">{cap}</div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:24px;">
+            <div data-card style="background:var(--card);border:1px solid var(--cardline);border-radius:12px;padding:14px 16px 8px;overflow-x:auto;">
+              {_svg_line_chart(rps_series, xs, rps_max, "requests / sec", "Sustained throughput")}
+            </div>
+            <div data-card style="background:var(--card);border:1px solid var(--cardline);border-radius:12px;padding:14px 16px 8px;overflow-x:auto;">
+              {_svg_line_chart(p99_series, xs, p99_max, "p99 latency (ms)", "Tail latency (p99)")}
+            </div>
+          </div>
+        </div>"""
+
+    return f"""
+  <section id="throughput" data-section="throughput" style="scroll-margin-top:80px;border-top:1px solid var(--hairline-soft);">
+    <div style="max-width:1200px;margin:0 auto;padding:72px 40px;">
+      <div style="display:flex;align-items:center;gap:16px;margin-bottom:22px;">
+        <span style="color:var(--accent);font-weight:600;font-size:13px;letter-spacing:.18em;text-transform:uppercase;">01 &middot; Throughput under load</span>
+        <span style="flex:1;height:1px;background:var(--hairline-soft);"></span>
+      </div>
+      <h2 style="font-weight:700;font-size:38px;line-height:1.08;letter-spacing:-.01em;color:var(--fg1);margin:0 0 12px;">{esc(d['throughputHeading'])}</h2>
+      <p style="color:var(--fg2);font-size:15.5px;line-height:1.6;max-width:80ch;margin:0;">{esc(d['throughputLede'])}</p>
+      {blocks}
+    </div>
+  </section>"""
+
+
+def dp4_table(d) -> str:
+    cells = d["cells"]
+    engines = d.get("engineOrder") or sorted({c["engine"] for c in cells})
+    engines_meta = d.get("engines", {})
+    payloads = d.get("payloadOrder") or sorted({c["payload"] for c in cells})
+    idx = _dp4_cells_index(cells)
+
+    cols = ["Engine · concurrency", "req/s", "MiB/s", "p50 ms", "p95 ms", "p99 ms", "p99.9 ms", "max ms", "errors"]
+    tables = ""
+    for pay in payloads:
+        rows = []
+        for e in engines:
+            for c in idx.get((e, pay), []):
+                label = f"{_dp4_label(e, engines_meta)} · c={c['concurrency']}"
+                rows.append([
+                    label,
+                    _fmt_num(c["rps"]),
+                    f"{c['throughput_mib_s']:.1f}",
+                    f"{c['p50_ms']:.2f}",
+                    f"{c['p95_ms']:.2f}",
+                    f"{c['p99_ms']:.2f}",
+                    f"{c['p999_ms']:.2f}",
+                    f"{c['max_ms']:.1f}",
+                    str(c.get("errors", 0)),
+                ])
+        if not rows:
+            continue
+        # Themis rows render green because the label carries "Themis"; keep that.
+        tables += _subhead(f"{pay.capitalize()} payload", first=(tables == ""))
+        tables += _num_table(cols, rows, min_width=720)
+
+    return f"""
+  <section id="table" data-section="table" style="scroll-margin-top:80px;border-top:1px solid var(--hairline-soft);">
+    <div style="max-width:1200px;margin:0 auto;padding:64px 40px;">
+      <div style="display:flex;align-items:center;gap:16px;margin-bottom:22px;">
+        <span style="color:var(--accent);font-weight:600;font-size:13px;letter-spacing:.18em;text-transform:uppercase;">02 &middot; The full grid</span>
+        <span style="flex:1;height:1px;background:var(--hairline-soft);"></span>
+      </div>
+      <h2 style="font-weight:700;font-size:30px;line-height:1.1;letter-spacing:-.01em;color:var(--fg1);margin:0 0 8px;">Every cell, both engines</h2>
+      {_note(d.get('tableNote', 'Each row is one measured 30s steady-state cell. Same policy, same corpus, same driver to both engines.'))}
+      {tables}
+    </div>
+  </section>"""
+
+
+def dp4_bounds(d) -> str:
+    """The honest 'what bounded the run' block - integrity, do not skip."""
+    items = ""
+    for b in d.get("bounds", []):
+        items += f"""
+          <div style="display:flex;gap:14px;align-items:flex-start;">
+            <span style="color:var(--accent);font-size:20px;font-weight:700;line-height:1.2;flex-shrink:0;">&rsaquo;</span>
+            <div><span style="color:var(--fg1);font-weight:600;font-size:14.5px;">{esc(b['title'])}</span>
+            <span style="color:var(--fg2);font-size:14px;line-height:1.55;"> — {esc(b['body'])}</span></div>
+          </div>"""
+    if not items:
+        return ""
+    return f"""
+  <section id="bounds" style="scroll-margin-top:80px;border-top:1px solid var(--hairline-soft);">
+    <div style="max-width:1000px;margin:0 auto;padding:56px 40px;">
+      <h3 style="font-weight:700;font-size:20px;color:var(--fg1);margin:0 0 6px;">What bounded the run</h3>
+      <p style="color:var(--fg3);font-size:13px;line-height:1.6;margin:0 0 22px;max-width:80ch;">So nobody over-reads a curve: here is what was actually limiting each region, measured, not assumed.</p>
+      <div style="display:flex;flex-direction:column;gap:16px;">{items}
+      </div>
+    </div>
+  </section>"""
+
+
 def _document(body: str, title: str) -> str:
     return f"""<!doctype html>
 <html lang="en">
@@ -929,6 +1170,10 @@ def build(run: dict) -> str:
         sections = [top_bar(run), hero(run), stat_band(run), mesh(run),
                     mesh_flows(run), meaning(run), method(run), dp2_appendix(run), footer(run), BACK_TO_TOP]
         return _document("".join(sections), run.get("title", "NOL8 Agent-to-Agent Control, Data Point 03"))
+    if run.get("kind") == "dp4":
+        sections = [top_bar(run), hero(run), stat_band(run), throughput(run),
+                    dp4_table(run), meaning(run), dp4_bounds(run), method(run), footer(run), BACK_TO_TOP]
+        return _document("".join(sections), run.get("title", "NOL8 Throughput at Load, Data Point 04"))
     body = "".join([
         top_bar(run), hero(run), stat_band(run), benchmark(run),
         latency(run), meaning(run), method(run), raw_section(run), footer(run), BACK_TO_TOP,

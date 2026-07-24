@@ -1,5 +1,12 @@
 # Data Point 4 - Throughput at load, plan
 
+> **BUILT (2026-07-24).** The driver, runner, report renderer, and notes now exist under
+> `demos/benchmark/datapoint4/` (see its [DEMO-NOTES.md](datapoint4/DEMO-NOTES.md)). Load
+> profile as built: concurrency {1,8,32,128,512,1024} x payload {small,medium,large},
+> 10s warm-up + 30s measured per cell, 50k-record / 5k-rule enterprise-dlp corpus. This
+> plan is kept as the design rationale. Next: run the sweep on EC2 against both engines,
+> `build-run.py` the CSV into run.json, render, and commit run.json with the real numbers.
+
 Planning only. This is the benchmark that lets NOL8 (Themis, FPGA) visibly pull ahead of
 Aergia (RE2, software). Everything in DP1-DP3 proves **correctness + parity + payload
 reduction**; none of it shows **throughput under load**, which is the FPGA's actual

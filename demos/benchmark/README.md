@@ -48,10 +48,16 @@ port, or a policy/propagation delay. (Tunables: `RELOAD_WAIT`, `ROUNDTRIP_TRIES`
 | **DP1** | **Pre-index optimization** - clean text before it becomes embeddings | `bash demos/benchmark/run-live.sh` | [DEMO-NOTES.md](DEMO-NOTES.md) |
 | **DP2** | **Pre/post-inference boundary** - keep secrets out of the model and the response | `bash demos/benchmark/datapoint2/run-live.sh` | [datapoint2/DEMO-NOTES.md](datapoint2/DEMO-NOTES.md) |
 | **DP3** | **Agent-to-agent mesh** - strip secrets at every hop of an agent workflow | `bash demos/benchmark/datapoint3/run-live.sh` | [datapoint3/DEMO-NOTES.md](datapoint3/DEMO-NOTES.md) |
+| **DP4** | **Throughput at load** - sustained req/s + latency tail as concurrency climbs | `bash demos/benchmark/datapoint4/run-live.sh` | [datapoint4/DEMO-NOTES.md](datapoint4/DEMO-NOTES.md) |
 
 Each `run-live.sh` deploys the policy, runs the modes, prints a combined CSV, and (DP2/DP3)
 adjudicates the engines against the oracle. DP2 and DP3 use the honest action model above;
-DP1 is the pre-index optimization flow (redact/drop for embedding cost + governance).
+DP1 is the pre-index optimization flow (redact/drop for embedding cost + governance). DP4 is
+different in kind: it proves **capacity, not correctness** - a concurrency x payload sweep on
+the same 5,000-rule literal policy, driving each engine to saturation and reporting the whole
+throughput-latency curve (no pre-set win target). It is the run that shows where the FPGA
+pulls ahead of RE2 under load - or, honestly, where the network still dominates. Expect ~24
+min per engine for the full default sweep; dial it down with the `DP4_*` env knobs.
 
 **Latest live results (2026-07-23):**
 - **DP2:** Themis == Aergia == oracle, **53/53**; 25 secrets stripped (redact + last-4 mask).
