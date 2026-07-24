@@ -938,10 +938,11 @@ def _fmt_num(v: float) -> str:
     return f"{v:.2f}"
 
 
-def _svg_line_chart(series, xs, ymax, ylabel, title, unit="") -> str:
-    """A small, theme-aware line chart. x is log-scaled over the concurrency
-    values `xs`; y is linear 0..ymax. `series` is a list of
-    {label, color, points:[(x,y)]}. Colors may be CSS vars, so it themes itself.
+def _svg_line_chart(series, xs, ymax, ylabel, title, unit="",
+                    xlabel="concurrency (in-flight requests, log scale)") -> str:
+    """A small, theme-aware line chart. x is log-scaled over the values `xs`;
+    y is linear 0..ymax. `series` is a list of {label, color, points:[(x,y)]}.
+    Colors may be CSS vars, so it themes itself.
     """
     import math
     W, H = 560, 320
@@ -980,7 +981,7 @@ def _svg_line_chart(series, xs, ymax, ylabel, title, unit="") -> str:
         parts.append(f'<text x="{px:.1f}" y="{pad_t+ph+18:.1f}" fill="var(--fg3)" font-size="10.5" '
                      f'text-anchor="middle" style="font-variant-numeric:tabular-nums;">{x}</text>')
     parts.append(f'<text x="{pad_l+pw/2:.1f}" y="{H-6}" fill="var(--fg3)" font-size="10.5" '
-                 f'text-anchor="middle">concurrency (in-flight requests, log scale)</text>')
+                 f'text-anchor="middle">{esc(xlabel)}</text>')
     # series
     for s in series:
         pts = [(xp(x), yp(y)) for x, y in s["points"]]
