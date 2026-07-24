@@ -58,15 +58,21 @@ type bucket struct {
 	cap  int // max distinct bodies held (bounds driver memory; large bodies are big)
 }
 
-func defaultBuckets() []bucket {
+// buckets builds the size bands with caller-set caps. The cap is the number of
+// DISTINCT bodies held and round-robined per band - it is the fair-comparison
+// knob: a small working set lets a software engine (RE2) serve the same inputs
+// warm out of CPU cache, which the FPGA can't benefit from, so it silently
+// favors RE2. Drive >= a few thousand unique bodies per band so the working set
+// blows past any cache and neither engine gets a free ride.
+func buckets(capSmall, capMedium, capLarge int) []bucket {
 	return []bucket{
-		{name: "small", lo: 0, hi: 4096, cap: 8192},
-		{name: "medium", lo: 4097, hi: 65536, cap: 2048},
+		{name: "small", lo: 0, hi: 4096, cap: capSmall},
+		{name: "medium", lo: 4097, hi: 65536, cap: capMedium},
 		// Upper bound below the ~1MB shared edge request-size cap: bodies at/over
 		// it get a 413 on BOTH engines (measured), which would contaminate the
 		// throughput numbers rather than measure either engine. Records above this
 		// (the corpus "near_limit" band) are simply excluded from the sweep.
-		{name: "large", lo: 65537, hi: 786432, cap: 512},
+		{name: "large", lo: 65537, hi: 786432, cap: capLarge},
 	}
 }
 
@@ -368,6 +374,10 @@ func main() {
 	timeoutMs := flag.Int("timeout-ms", 15000, "per-request timeout")
 	insecure := flag.Bool("insecure", false, "skip TLS verification (internal certs)")
 	output := flag.String("output", "throughput.csv", "output CSV path")
+	// Distinct bodies held per band (the fair-comparison / cache-defeat knob).
+	capSmall := flag.Int("cap-small", 20000, "distinct small bodies to hold and round-robin")
+	capMedium := flag.Int("cap-medium", 8000, "distinct medium bodies to hold and round-robin")
+	capLarge := flag.Int("cap-large", 4000, "distinct large bodies to hold and round-robin")
 	flag.Parse()
 
 	lbl := *label
@@ -393,8 +403,8 @@ func main() {
 	}
 	wantPayloads := strings.Split(*payloadStr, ",")
 
-	buckets := defaultBuckets()
-	corpus, err := loadCorpus(*input, buckets)
+	bks := buckets(*capSmall, *capMedium, *capLarge)
+	corpus, err := loadCorpus(*input, bks)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "load corpus: %v\n", err)
 		os.Exit(1)
@@ -402,9 +412,13 @@ func main() {
 
 	fmt.Printf("DP4 throughput | engine=%s host=%s GOMAXPROCS=%d\n",
 		lbl, hostOf(endpoint), runtime.GOMAXPROCS(0))
-	for _, b := range buckets {
+	for _, b := range bks {
 		cb := corpus[b.name]
-		fmt.Printf("  corpus %-6s: %d bodies held, avg %d bytes\n", b.name, len(cb.bodies), cb.avgBytes())
+		short := ""
+		if len(cb.bodies) < b.cap {
+			short = fmt.Sprintf("  (WANTED %d - corpus is short on this band; generate more records)", b.cap)
+		}
+		fmt.Printf("  corpus %-6s: %d distinct bodies, avg %d bytes%s\n", b.name, len(cb.bodies), cb.avgBytes(), short)
 	}
 
 	client := buildClient(maxInt(concurrency), time.Duration(*timeoutMs)*time.Millisecond, *insecure)

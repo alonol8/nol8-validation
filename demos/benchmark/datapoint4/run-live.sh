@@ -31,14 +31,20 @@ PACK="demos/benchmark/datapoint4"
 RESULTS="${DP4_RESULTS:-$ROOT/$PACK/results}"
 mkdir -p "$RESULTS"
 
-# Scale + load knobs (all overridable). 50k records / 5k rules is 5x the
-# qualification floor; the sweep matches the plan's defaults.
-RECORDS="${DP4_RECORDS:-50000}"
-RULES="${DP4_RULES:-5000}"
+# Scale + load knobs (all overridable). 80k records supplies >=4,000 DISTINCT
+# bodies in every size band so neither engine gets a warm-cache free ride (a
+# small repeated working set silently favors software RE2, which the FPGA can't
+# exploit); 4,000 rules per the qualification target.
+RECORDS="${DP4_RECORDS:-80000}"
+RULES="${DP4_RULES:-4000}"
 CONCURRENCY="${DP4_CONCURRENCY:-1,8,32,128,512,1024}"
 PAYLOADS="${DP4_PAYLOADS:-small,medium,large}"
 WARMUP="${DP4_WARMUP:-10}"
 DURATION="${DP4_DURATION:-30}"
+# Distinct bodies held per band (the fair-comparison / cache-defeat knob).
+CAP_SMALL="${DP4_CAP_SMALL:-20000}"
+CAP_MEDIUM="${DP4_CAP_MEDIUM:-8000}"
+CAP_LARGE="${DP4_CAP_LARGE:-4000}"
 INSECURE_FLAG=""
 [ "${DP4_INSECURE:-0}" = "1" ] && INSECURE_FLAG="--insecure"
 # Engines to drive. Default both; set DP4_ENGINES=themis if Aergia :444 is down.
@@ -84,6 +90,9 @@ for engine in $ENGINES; do
     --payloads "$PAYLOADS" \
     --warmup "$WARMUP" \
     --duration "$DURATION" \
+    --cap-small "$CAP_SMALL" \
+    --cap-medium "$CAP_MEDIUM" \
+    --cap-large "$CAP_LARGE" \
     $INSECURE_FLAG \
     --output "$RESULTS/throughput_$engine.csv"
 done
