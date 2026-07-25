@@ -55,9 +55,10 @@ What holds up:
    edge. **There is no cliff, and the edge does not widen with policy size** — this
    corrects the earlier claim.
 4. **On very large payloads, both engines are limited by byte *delivery*, not
-   matching.** The absolute ceiling we saw (~150 MB/s) is now under investigation
-   because part of it may be a **cloud network throttle on our test host**, not the
-   engines (see Open Questions).
+   matching.** The absolute ceiling we saw (~150 MB/s) is **partly our test host's
+   cloud egress cap, not the engine** — we measured the throttle firing during the run
+   (see Open Questions). The engine-vs-engine comparison stays fair; the real ceiling
+   needs a multi-host driver.
 
 **Where the real story is — and now we've measured it:** at the pure request-rate
 level, in this rig, the two engines are *close*. The FPGA's decisive advantage is
@@ -251,17 +252,18 @@ never as the engine's latency.
 
 ## Open questions (being straight about it)
 
-- **The big-payload ceiling may be partly *our* network, not the engines.** We
-  proved the slowdown isn't the matching, but our test host runs on cloud
-  infrastructure that **throttles outbound bandwidth** and *records when it does*.
-  On inspection, that outbound-throttle counter is **large and non-zero** — the
-  cloud has been clipping our upload bandwidth. Since the request payloads are what
-  we upload, part of the ~150 MB/s "engine ceiling" may actually be the **test
-  host's cloud bandwidth allowance.** Relative comparisons between the two engines
-  (same host, same throttle) stay fair; the *absolute* byte ceiling is now in
-  question until we measure it directly. This also reframes a planned "push to
-  380 MB/s" test: if the limit is a per-host cloud cap, more load on one host can't
-  break it — we'd need multiple hosts.
+- **The big-payload ceiling is partly *our* network, not the engines — now
+  confirmed.** Our test host runs on cloud infrastructure that **throttles outbound
+  bandwidth** and *records when it does*. We measured it directly: during a 20-second
+  large-payload run (~154 MB/s of uploads), the host's outbound-allowance-exceeded
+  counter **climbed by ~4,000** (and it was *bandwidth*, not packet-rate — the
+  packet-rate counter didn't move). So the cloud was **actively clipping our egress
+  during the run**, which means the ~150 MB/s "engine ceiling" is **at least partly
+  the test host's cloud bandwidth allowance, not the engine.** The *absolute* byte
+  ceiling therefore cannot be attributed to the engine; the *relative* engine
+  comparison (same host, same throttle) stays fair. This also settles the shape of a
+  "push to 380 MB/s" test: one host is allowance-capped, so it must be driven from
+  **multiple hosts** to find the real ceiling.
 - **Beyond ~8,000 rules is untestable today** — the engine won't accept a larger
   policy (a deployment cap, not a speed result).
 - **Does the ~8-lexer count set Aergia's ceiling?** A coherent, testable hypothesis
@@ -345,10 +347,12 @@ corrupt the very numbers we're protecting.
   the "Latency" section for the full concurrency curve + Little's Law check.
 - **Matching is free (single-request probe):** identical latency for zero-match vs
   match-packed text of the same size on the FPGA (512 KB: ≈373 ms either way).
-- **Big-payload ceiling:** both engines ~135–155 MB/s aggregate — **but the
-  absolute figure is under review** because the test host's cloud outbound-
-  bandwidth throttle was active; relative engine comparison stays valid. ~1 MB
-  requests are rejected by a shared front-door size cap.
+- **Big-payload ceiling:** both engines ~135–155 MB/s aggregate — **but the absolute
+  figure is NOT an engine limit:** measured directly, the test host's cloud egress-
+  allowance-exceeded counter rose ~4,000 during a 20 s / ~154 MB/s run, so the cloud
+  was actively throttling our uploads. Relative engine comparison stays valid; the
+  real ceiling needs a multi-host driver. ~1 MB requests are rejected by a shared
+  front-door size cap.
 - **Rule count (corrected):** software throughput **flat at ~26,300 req/s from
   1,000 through 8,000 rules — no cliff, no slope**; FPGA flat at ~28,600 req/s
   throughout. Deployment ceiling observed between 8,000 and 10,000 rules (10,000
