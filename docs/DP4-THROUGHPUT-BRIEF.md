@@ -55,10 +55,11 @@ What holds up:
    edge. **There is no cliff, and the edge does not widen with policy size** — this
    corrects the earlier claim.
 4. **On very large payloads, both engines are limited by byte *delivery*, not
-   matching.** The absolute ceiling we saw (~150 MB/s) is **partly our test host's
-   cloud egress cap, not the engine** — we measured the throttle firing during the run
-   (see Open Questions). The engine-vs-engine comparison stays fair; the real ceiling
-   needs a multi-host driver.
+   matching.** The absolute ceiling we saw (~150 MB/s) is **partly our driver host's
+   NIC bandwidth cap, not the engine** — we measured the throttle firing under load and
+   zero at idle (see Open Questions; the driver and engine are same-VPC, but the cap is
+   per-instance-NIC, not a VPC boundary). The engine-vs-engine comparison stays fair;
+   the real ceiling needs a multi-host driver.
 
 **Where the real story is — and now we've measured it:** at the pure request-rate
 level, in this rig, the two engines are *close*. The FPGA's decisive advantage is
@@ -252,18 +253,23 @@ never as the engine's latency.
 
 ## Open questions (being straight about it)
 
-- **The big-payload ceiling is partly *our* network, not the engines — now
-  confirmed.** Our test host runs on cloud infrastructure that **throttles outbound
-  bandwidth** and *records when it does*. We measured it directly: during a 20-second
-  large-payload run (~154 MB/s of uploads), the host's outbound-allowance-exceeded
-  counter **climbed by ~4,000** (and it was *bandwidth*, not packet-rate — the
-  packet-rate counter didn't move). So the cloud was **actively clipping our egress
-  during the run**, which means the ~150 MB/s "engine ceiling" is **at least partly
-  the test host's cloud bandwidth allowance, not the engine.** The *absolute* byte
-  ceiling therefore cannot be attributed to the engine; the *relative* engine
-  comparison (same host, same throttle) stays fair. This also settles the shape of a
-  "push to 380 MB/s" test: one host is allowance-capped, so it must be driven from
-  **multiple hosts** to find the real ceiling.
+- **The big-payload ceiling is partly *our driver host's NIC*, not the engines —
+  now confirmed.** The driver instance (an m7a.2xlarge) has a per-NIC **bandwidth
+  allowance**, and the cloud records when a workload exceeds it. Measured directly:
+  during a 20-second large-payload run (~154 MB/s ≈ 1.2 Gbps of uploads) the
+  outbound-allowance-exceeded counter **rose by ~4,000**; over an **idle 20-second
+  control it rose by 0**; the packet-rate counter never moved. So the throttling is
+  caused by our load and is specifically *bandwidth*. Note this allowance applies to
+  **all** traffic the NIC sends — the driver and engine are in the **same VPC** (the
+  bytes never leave it), but same-VPC traffic still counts against the per-instance
+  NIC bandwidth cap; "egress" here means "out of the instance's network card," not
+  "out of the VPC." (It fired at only ~1.2 Gbps, below the instance's nominal
+  baseline — likely burst-credit depletion on a long-lived box; the exact AWS
+  mechanism isn't fully pinned, but the effect is measured.) **Consequence:** the
+  ~150 MB/s absolute figure is capped by the *driver host*, so it can't be attributed
+  to the engine; the *relative* engine comparison (same driver, same cap) stays fair;
+  and a real "380 MB/s" ceiling test needs **multiple driver hosts** (or a
+  network-optimized instance), since one m7a.2xlarge NIC is the bottleneck.
 - **Beyond ~8,000 rules is untestable today** — the engine won't accept a larger
   policy (a deployment cap, not a speed result).
 - **Does the ~8-lexer count set Aergia's ceiling?** A coherent, testable hypothesis
@@ -348,11 +354,11 @@ corrupt the very numbers we're protecting.
 - **Matching is free (single-request probe):** identical latency for zero-match vs
   match-packed text of the same size on the FPGA (512 KB: ≈373 ms either way).
 - **Big-payload ceiling:** both engines ~135–155 MB/s aggregate — **but the absolute
-  figure is NOT an engine limit:** measured directly, the test host's cloud egress-
-  allowance-exceeded counter rose ~4,000 during a 20 s / ~154 MB/s run, so the cloud
-  was actively throttling our uploads. Relative engine comparison stays valid; the
-  real ceiling needs a multi-host driver. ~1 MB requests are rejected by a shared
-  front-door size cap.
+  figure is NOT an engine limit:** the driver host's NIC bandwidth-allowance-exceeded
+  counter rose ~4,000 during a 20 s / ~154 MB/s run and **0 at idle** (same-VPC path;
+  the cap is per-instance NIC, not a VPC boundary). Relative engine comparison stays
+  valid; the real ceiling needs a multi-host driver. ~1 MB requests are rejected by a
+  shared front-door size cap.
 - **Rule count (corrected):** software throughput **flat at ~26,300 req/s from
   1,000 through 8,000 rules — no cliff, no slope**; FPGA flat at ~28,600 req/s
   throughout. Deployment ceiling observed between 8,000 and 10,000 rules (10,000
