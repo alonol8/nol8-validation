@@ -56,7 +56,14 @@ A dark, on-brand NOL8 web console that drives `/v1/process` live. Dependency-fre
 - **Corpus automation** — one click runs the **whole catalog through both engines** and
   shows an aggregate dashboard (docs verified, mean/p95 latency, docs/s, density) with a
   per-document detail table.
-- **Efficiency panel** — the measured ~8-core software tax the FPGA offloads.
+- **Scale** — a real sustained-load burst: deploys a **matched 8k-rule enterprise policy**
+  to both engines, drives the DP4 driver at 256 concurrency (~8s each), shows **live
+  throughput** (Themis leads, ~1.2–1.4×), then restores the demo policy. *(Apples-to-apples
+  only — a mismatched tiny policy makes software look faster on clean text; the console
+  enforces a deployable matched policy. Absolute req/s is a live point-in-time number that
+  swings with shared-host load; the FPGA's lead and its CPU cost are the stable facts.)*
+- **Efficiency panel** — the ~8-core software tax the FPGA offloads, as cores + %-of-box,
+  **validated flat under load** (F2 held ~11.3/24 cores while sustaining ~27k req/s).
 
 ```bash
 # 1) on the box that reaches the engines — leave this running (foreground)

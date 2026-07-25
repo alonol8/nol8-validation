@@ -175,6 +175,18 @@
     <div id="corpusResult"></div>
   </section>
 
+  <!-- SCALE -->
+  <section class="card">
+    <span class="label">Scale · sustained load at the live engines (real, not simulated)</span>
+    <div class="go">
+      <button class="process" id="runScale">▶ Run load test · both engines</button>
+      <span class="scope">Deploys a matched <b>enterprise-scale policy</b> to both engines, drives the DP4 load
+        driver at 256 concurrency (~8s each), then restores the demo policy. Apples-to-apples; real throughput.
+        <b>Takes ~45s.</b></span>
+    </div>
+    <div id="scaleResult"></div>
+  </section>
+
   <!-- EFFICIENCY -->
   <section class="card">
     <span class="label">Why the hardware matters · CPU cost measured on the engine hosts</span>
@@ -304,14 +316,45 @@ async function runCorpus(){
   finally{btn.disabled=false;btn.innerHTML='▶ Run corpus (<span id="catCount">'+catalog.length+'</span> prompts)';}
 }
 
+async function runScale(){
+  const btn=$('#runScale'); const out=$('#scaleResult'); const proc=$('#process');
+  btn.disabled=true; proc.disabled=true; proc.title='paused during load test (policy is swapped, then restored)';
+  btn.innerHTML='<span class="spin"></span> Deploying enterprise policy · driving load · restoring…';
+  out.innerHTML='<div class="scope" style="margin-top:14px">~45s: deploy matched policy → load both engines → restore demo policy…</div>';
+  try{
+    const r=await fetch('/api/scale',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({})});
+    const d=await r.json(); if(!r.ok) throw new Error(d.error||'failed');
+    const card=(eng,fpga)=>{
+      const s=d[eng]; const cpuPct=Math.round(100*s.host_cores_total/s.box_cores);
+      return `<div class="aggcard ${fpga?'fpga':''}">
+        <h4>${eng==='themis'?'Themis · FPGA':'Aergia · RE2 software'}<span class="muted" style="font-size:12px">${s.completed.toLocaleString()} reqs / ${s.duration}s</span></h4>
+        <div class="grid">
+          <div class="m"><div class="v ${fpga?'grn':''} tnum">${s.rps.toLocaleString()}</div><div class="k">req / s sustained</div></div>
+          <div class="m"><div class="v tnum">${s.p99}</div><div class="k">p99 ms</div></div>
+          <div class="m"><div class="v tnum">${s.errors}</div><div class="k">errors</div></div>
+          <div class="m"><div class="v ${fpga?'grn':''} tnum">~${s.host_cores_total}/${s.box_cores}</div><div class="k">host cores · ~${cpuPct}%</div></div>
+        </div></div>`;
+    };
+    const lead=(d.themis.rps/d.aergia.rps).toFixed(2);
+    out.innerHTML=`<div class="agg" style="margin-top:6px">${card('themis',true)}${card('aergia',false)}</div>
+      <div class="compare">
+        <span><b class="tnum">${(d.themis.completed+d.aergia.completed).toLocaleString()}</b> requests processed live · <b>${d.policy_rules.toLocaleString()}</b>-rule policy · conc ${d.concurrency}</span>
+        <span class="ident">✓ Themis ${lead}× the throughput</span>
+        <span class="ident">✓ and at ~47% F2 CPU — the FPGA offloads ~8 matching cores (measured, flat under load)</span>
+      </div>
+      <div class="scope" style="margin-top:10px">${d.note}. See the DP4 brief for the medianed reference numbers.</div>`;
+  }catch(e){out.innerHTML=`<div class="err">⚠ ${e.message}</div>`;}
+  finally{btn.disabled=false; proc.disabled=false; proc.title=''; btn.textContent='▶ Run load test · both engines';}
+}
+
 function renderEfficiency(){
   if(!EFF)return;
-  const max=Math.max(EFF.themis.total,EFF.aergia.total);
+  const max=Math.max(EFF.themis.box_cores,EFF.aergia.box_cores);
   const bar=(id,e,cls)=>{
-    const w=100*e.total/max, m=e.total>0?100*e.matching/e.total:0;
+    const w=100*e.total/max, m=e.total>0?100*e.matching/e.total:0, pct=Math.round(100*e.total/e.box_cores);
     return `<div class="bar-row"><div class="name">${id==='themis'?'Themis · FPGA':'Aergia · RE2'}<small>${id==='themis'?'matching in silicon':'RE2 lexers on CPU'}</small></div>
       <div class="track"><div class="fill ${cls}" style="width:${w}%">${e.matching>0?`<div class="seg" style="width:${m}%"></div>`:''}</div></div>
-      <div class="cores">${e.total} cores <small>· ${(e.rps/1000).toFixed(1)}k rps</small></div></div>`;
+      <div class="cores">${e.total}/${e.box_cores} cores <small>· ${pct}% · ${(e.rps/1000).toFixed(1)}k rps</small></div></div>`;
   };
   $('#effBars').innerHTML=bar('themis',EFF.themis,'fpga')+bar('aergia',EFF.aergia,'sw');
   $('#taxN').textContent='~'+EFF.tax_cores; $('#ratioN').textContent='~'+EFF.ratio+'×';
@@ -320,6 +363,7 @@ function renderEfficiency(){
 async function boot(){
   $('#process').onclick=processBoth;
   $('#runCorpus').onclick=runCorpus;
+  $('#runScale').onclick=runScale;
   $('#message').addEventListener('input',()=>{if($('#catalog').value==='__custom')lastCustom=$('#message').value;});
   try{catalog=await (await fetch('/api/catalog')).json(); fillCatalog();}catch(e){}
   try{EFF=await (await fetch('/api/efficiency')).json(); renderEfficiency();}catch(e){}

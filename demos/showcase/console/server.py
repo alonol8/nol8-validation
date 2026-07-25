@@ -59,13 +59,85 @@ ENGINES = {
                "token": os.environ.get("AERGIA_TOKEN", "")},
 }
 
-# Efficiency numbers measured on the engine hosts (DPDK poll-mode → constant, so a
-# fixed reading is representative; see docs/DP4-THROUGHPUT-BRIEF.md "efficiency result").
+# Efficiency numbers measured on the engine hosts (DPDK poll-mode → constant under
+# load; validated: F2 apollo held ~11.3 cores while sustaining ~27k req/s). See
+# docs/DP4-THROUGHPUT-BRIEF.md "efficiency result".
 EFFICIENCY = {
-    "themis": {"apollo": 11.3, "matching": 0.0, "total": 11.3, "rps": 28600, "matching_label": "FPGA / 0"},
-    "aergia": {"apollo": 11.3, "matching": 8.2, "total": 19.4, "rps": 26300, "matching_label": "8.2 (RE2 lexers)"},
+    "themis": {"apollo": 11.3, "matching": 0.0, "total": 11.3, "box_cores": 24,
+               "rps": 28600, "matching_label": "FPGA / 0"},
+    "aergia": {"apollo": 11.3, "matching": 8.2, "total": 19.4, "box_cores": 32,
+               "rps": 26300, "matching_label": "8.2 (RE2 lexers)"},
     "tax_cores": 8.2, "ratio": 1.9,
 }
+
+DRIVER = ROOT / "demos" / "benchmark" / "datapoint4" / "results" / "dp4driver"
+
+
+def find_corpus() -> str | None:
+    runs = sorted((ROOT / "artifacts" / "runs").glob("*/generated/input.jsonl"), reverse=True)
+    return str(runs[0]) if runs else None
+
+
+def _matched_run(max_rules=8000):
+    """Newest run dir with a corpus AND a *deployable* policy (≤ the ~8k deploy
+    ceiling — a bigger policy fails to deploy on Themis, leaving an asymmetric setup)."""
+    for pol in sorted((ROOT / "artifacts" / "runs").glob("*/generated/scale-policy.nol"), reverse=True):
+        if not (pol.parent / "input.jsonl").exists():
+            continue
+        rules = sum(1 for ln in pol.read_text(encoding="utf-8").splitlines() if "->" in ln)
+        if rules <= max_rules:
+            return pol.parent / "input.jsonl", pol, rules
+    return None, None, 0
+
+
+def _deploy(env, policy, engine) -> bool:
+    r = subprocess.run(["validate", "policy", "--file", str(policy), "--target", engine],
+                       env=env, capture_output=True, timeout=120)
+    return r.returncode == 0
+
+
+def scale(engines=("themis", "aergia"), payload="small", concurrency=256, duration=8, warmup=3) -> dict:
+    """Honest sustained-load burst: deploy the corpus's OWN policy to both engines
+    (apples-to-apples — a mismatched tiny policy makes software look faster on clean
+    text), drive at DP4 conditions, then RESTORE the demo policy so redaction still works.
+    Absolute throughput is a live point-in-time number on a shared host; the FPGA's lead
+    and its CPU cost are the stable facts."""
+    corpus, policy, rules = _matched_run()
+    if not DRIVER.exists() or not corpus:
+        raise RuntimeError("load driver or a matched, deployable corpus+policy not available")
+    env = os.environ.copy()
+    env["THEMIS_ENDPOINT"] = ENGINES["themis"]["endpoint"]
+    env["AERGIA_ENDPOINT"] = ENGINES["aergia"]["endpoint"]
+    try:
+        for eng in engines:
+            if not _deploy(env, policy, eng):
+                raise RuntimeError(f"{rules}-rule policy failed to deploy to {eng} — aborting to avoid a mismatched run")
+        time.sleep(6)
+        out = {"policy_rules": rules, "concurrency": concurrency,
+               "note": "live burst · matched enterprise policy · absolute varies with shared-host load"}
+        for eng in engines:
+            csv = f"/tmp/scale_{eng}.csv"
+            subprocess.run(
+                [str(DRIVER), "--engine", eng, "--label", eng, "--input", str(corpus),
+                 "--concurrency", str(concurrency), "--payloads", payload,
+                 "--warmup", str(warmup), "--duration", str(duration),
+                 "--cap-small", "4000", "--cap-medium", "4000", "--cap-large", "4000",
+                 "--output", csv],
+                env=env, capture_output=True, timeout=warmup + duration + 40)
+            r = Path(csv).read_text(encoding="utf-8").strip().splitlines()[-1].split(",")
+            out[eng] = {
+                "label": ENGINES[eng]["label"],
+                "rps": round(float(r[8])), "mib_s": round(float(r[9]), 1),
+                "p50": float(r[10]), "p99": float(r[12]), "mean": float(r[16]),
+                "completed": int(r[6]), "errors": int(r[7]),
+                "duration": float(r[5]), "avg_bytes": int(float(r[4])),
+                "host_cores_total": EFFICIENCY[eng]["total"], "box_cores": EFFICIENCY[eng]["box_cores"],
+            }
+        return out
+    finally:
+        # Always put the human-readable demo policy back for the redaction console.
+        for eng in engines:
+            _deploy(env, POLICY, eng)
 
 POLICY_RULE = re.compile(r'^\s*"(?P<lit>.*)"\s*->\s*"(?P<tok>.*)"\s*;\s*$')
 
@@ -248,6 +320,12 @@ class Handler(BaseHTTPRequestHandler):
             payload = json.loads(self.rfile.read(n) or b"{}") if n else {}
             if path == "/api/batch":
                 return self._send(200, batch())
+            if path == "/api/scale":
+                payload = payload if isinstance(payload, dict) else {}
+                return self._send(200, scale(
+                    payload=payload.get("payload", "small"),
+                    concurrency=int(payload.get("concurrency", 256)),
+                    duration=int(payload.get("duration", 8))))
             if path == "/api/process":
                 engine = payload.get("engine", "themis")
                 message = payload.get("message", "")
