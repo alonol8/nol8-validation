@@ -116,17 +116,24 @@ retracted 8.4k. Synthetic filler was low-entropy ("same sentence", a mistake); s
 - **Metrics gaps still worth adding:** per-cell rep-variance + canary guard; correctness-
   under-load (sample 1% vs oracle); soak; error taxonomy; ENA-delta per large cell.
 
-### ✅ DEMO SYSTEM BUILT — `demos/showcase/` (SA-runnable, self-contained)
+### ✅ DEMO SYSTEM BUILT — `demos/showcase/` (SA-runnable, self-contained, covers 3 use cases)
 
-- **Act 1 `redact-demo.sh` + `redact-demo.py`** (run on `nol8-demo`): deploys
-  `demos/policies/starter-known-values.nol`, sends `sample-message.txt` through
-  `/v1/process`, prints BEFORE/AFTER/ORACLE. Oracle derived from the policy file
-  (for each governed value in input: assert raw gone + token present). **Tested live:
-  6/6 redacted & verified on Themis.** `ENGINE=aergia` shows identical output (parity).
-- **Act 2 `efficiency-demo.sh`** (run on laptop; SSHes themis-demo+aergia-demo): samples
-  on-box cores, prints the ~8-core tax / ~1.9× contrast. **Tested: 11.3 vs 19.4 cores.**
-- `RUNBOOK.md` (two acts, two-host, copy-paste, what-to-say) + `README.md`.
-- Story: same customer-verifiable result from FPGA & software, at ~half the host CPU/req.
+- **Act 1 = the 3 use cases `usecases-demo.sh`** (run on `nol8-demo`): one capability
+  (`/v1/process` literal redaction) at three control points, each oracle-verified —
+  **pre-embedding (DP1), pre/post-inference (DP2), agent-to-agent (DP3)**. Scenarios in
+  `scenarios/*.txt` (real governed values). **Tested live on Themis: 3/3 use cases, 3/3
+  values each.** `ENGINE=aergia` → identical output (parity). Single-message variant:
+  `redact-demo.sh` (`MSG_FILE=` any file); `redact-demo.py` has the oracle (policy-derived:
+  raw gone + token present) + a near-miss guard (warns when a value is split by a line-break
+  so literal match correctly can't catch it — found on the agent scenario during testing).
+- **Act 2 `efficiency-demo.sh`** (run on laptop; SSHes themis-demo+aergia-demo): on-box
+  core sampling, prints the ~8-core tax / ~1.9× contrast. **Tested: 11.3 vs 19.4 cores.**
+- `RUNBOOK.md` (two-host, copy-paste, what-to-say) + `README.md`. **EC2 synced to HEAD**
+  (was scp scratch; now runs from committed code). Story: same customer-verifiable result
+  from FPGA & software, at ~half the host CPU/req.
+- **AGENDA (later, Jamie):** need MORE than one demo story; build a full **agentic demo**
+  using the mesh + pre-index asset repos ([[demo-asset-repos]]); this showcase covers the
+  3 use cases at the redaction level, the agentic build is the richer live version.
 
 ## Tooling (datapoint4/)
 
