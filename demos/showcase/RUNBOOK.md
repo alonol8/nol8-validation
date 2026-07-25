@@ -66,6 +66,13 @@ green result means the engine's output provably matches the policy. (If a govern
 value is split across a line break it can't match as a literal — the tool warns you
 rather than silently miss it.)
 
+**Match density is reported on every run** (`N matches in B bytes = X matches/KB`).
+The stock scenarios sit at **~7–9 matches/KB** — a realistic density for messages of
+this type. Density doesn't change the (deterministic) redaction result here; it's the
+variable *software throughput* is sensitive to, which is why we surface it on every
+run and stress it deliberately in the DP4 throughput work. To demo a denser message,
+point `redact-demo.sh` at your own file with `MSG_FILE=`.
+
 **Prove correctness parity** — run the identical tour through the software engine:
 
 ```bash

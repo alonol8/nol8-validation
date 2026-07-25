@@ -93,9 +93,17 @@ def main() -> int:
     passed = sum(1 for c in checks if c["ok"])
     total = len(checks)
 
+    # Match density — always reported (matches/KB is the metric software performance
+    # is sensitive to; surface it on every run so it's never missing from the record).
+    msg_bytes = len(original.encode("utf-8"))
+    match_occurrences = sum(original.count(lit) for lit, _ in expected)
+    matches_per_kb = match_occurrences / (msg_bytes / 1024) if msg_bytes else 0.0
+
     if args.json:
         print(json.dumps(
             {"engine": args.engine_label, "in_scope": total, "verified": passed,
+             "message_bytes": msg_bytes, "match_occurrences": match_occurrences,
+             "matches_per_kb": round(matches_per_kb, 2),
              "near_misses": [{"value": l, "token": t} for l, t in near_misses],
              "original": original, "processed": processed, "checks": checks}, indent=2))
         return 0 if passed == total and total > 0 else 1
@@ -121,6 +129,8 @@ def main() -> int:
         for lit, tok in near_misses:
             print(f"       • {lit!r} → {tok}")
     print(f"\n  {passed}/{total} governed values redacted and verified.")
+    print(f"  Match density: {match_occurrences} matches in {msg_bytes} bytes "
+          f"= {matches_per_kb:.1f} matches/KB.")
     if passed == total:
         print("  Deterministic literal replacement confirmed against the oracle.\n")
         return 0
