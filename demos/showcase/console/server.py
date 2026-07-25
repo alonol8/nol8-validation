@@ -24,6 +24,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -82,6 +83,19 @@ def policy_pairs() -> list[tuple[str, str]]:
 
 PAIRS = policy_pairs()
 
+CATALOG_FILE = HERE / "catalog.json"
+CATALOG = json.loads(CATALOG_FILE.read_text(encoding="utf-8")) if CATALOG_FILE.exists() else []
+
+
+def stats(xs: list) -> dict:
+    if not xs:
+        return {"p50": 0, "p95": 0, "mean": 0, "min": 0, "max": 0}
+    s = sorted(xs)
+    n = len(s)
+    q = lambda p: s[min(n - 1, int(p * n))]
+    return {"p50": round(q(0.5), 2), "p95": round(q(0.95), 2),
+            "mean": round(sum(s) / n, 2), "min": round(s[0], 2), "max": round(s[-1], 2)}
+
 
 def scenarios() -> dict:
     out = {}
@@ -107,7 +121,9 @@ def call_process(engine: str, message: str, timeout: float = 15.0) -> str:
 
 def process(engine: str, message: str) -> dict:
     expected = [(lit, tok) for lit, tok in PAIRS if lit and lit in message]
+    t0 = time.perf_counter()
     processed = call_process(engine, message)
+    latency_ms = (time.perf_counter() - t0) * 1000.0
     checks = [{"value": lit, "token": tok,
                "ok": (lit not in processed) and (tok in processed)}
               for lit, tok in expected]
@@ -122,9 +138,45 @@ def process(engine: str, message: str) -> dict:
         "before": message, "after": processed,
         "checks": checks, "verified": sum(1 for c in checks if c["ok"]),
         "in_scope": len(checks), "near_misses": near,
-        "message_bytes": msg_bytes, "match_occurrences": occ,
+        "message_bytes": msg_bytes, "response_bytes": len(processed.encode("utf-8")),
+        "match_occurrences": occ,
         "matches_per_kb": round(occ / (msg_bytes / 1024), 2) if msg_bytes else 0.0,
+        "latency_ms": round(latency_ms, 2),
     }
+
+
+def batch(engines=("themis", "aergia")) -> dict:
+    """Run the whole catalog through each engine; return per-engine aggregates + rows."""
+    out = {}
+    for eng in engines:
+        rows, lat = [], []
+        for entry in CATALOG:
+            r = process(eng, entry["text"])
+            rows.append({"id": entry["id"], "title": entry["title"], "usecase": entry["usecase"],
+                         "in_scope": r["in_scope"], "verified": r["verified"],
+                         "ok": r["verified"] == r["in_scope"], "latency_ms": r["latency_ms"],
+                         "matches": r["match_occurrences"], "bytes": r["message_bytes"],
+                         "density": r["matches_per_kb"]})
+            lat.append(r["latency_ms"])
+        docs = len(rows)
+        bytes_total = sum(x["bytes"] for x in rows)
+        matches = sum(x["matches"] for x in rows)
+        wall = sum(lat)
+        out[eng] = {
+            "label": ENGINES[eng]["label"],
+            "agg": {
+                "docs": docs,
+                "in_scope": sum(x["in_scope"] for x in rows),
+                "verified": sum(x["verified"] for x in rows),
+                "docs_ok": sum(1 for x in rows if x["ok"]),
+                "matches": matches, "bytes": bytes_total,
+                "latency": stats(lat), "wall_ms": round(wall, 1),
+                "docs_per_s": round(docs / (wall / 1000), 0) if wall else 0,
+                "density": round(matches / (bytes_total / 1024), 2) if bytes_total else 0,
+            },
+            "rows": rows,
+        }
+    return out
 
 
 def deploy_policy() -> dict:
@@ -166,6 +218,8 @@ class Handler(BaseHTTPRequestHandler):
                               "text/html; charset=utf-8")
         if path == "/api/scenarios":
             return self._send(200, scenarios())
+        if path == "/api/catalog":
+            return self._send(200, CATALOG)
         if path == "/api/efficiency":
             return self._send(200, EFFICIENCY)
         if path.startswith("/assets/"):
@@ -188,18 +242,21 @@ class Handler(BaseHTTPRequestHandler):
         self._send(200, target.read_bytes(), ctype)
 
     def do_POST(self):
-        if self.path.split("?", 1)[0] != "/api/process":
-            return self._send(404, {"error": "not found"})
+        path = self.path.split("?", 1)[0]
         try:
             n = int(self.headers.get("Content-Length", 0))
-            payload = json.loads(self.rfile.read(n) or b"{}")
-            engine = payload.get("engine", "themis")
-            message = payload.get("message", "")
-            if engine not in ENGINES:
-                return self._send(400, {"error": "unknown engine"})
-            if not message.strip():
-                return self._send(400, {"error": "empty message"})
-            return self._send(200, process(engine, message))
+            payload = json.loads(self.rfile.read(n) or b"{}") if n else {}
+            if path == "/api/batch":
+                return self._send(200, batch())
+            if path == "/api/process":
+                engine = payload.get("engine", "themis")
+                message = payload.get("message", "")
+                if engine not in ENGINES:
+                    return self._send(400, {"error": "unknown engine"})
+                if not message.strip():
+                    return self._send(400, {"error": "empty message"})
+                return self._send(200, process(engine, message))
+            return self._send(404, {"error": "not found"})
         except Exception as exc:  # noqa: BLE001
             return self._send(502, {"error": str(exc)})
 

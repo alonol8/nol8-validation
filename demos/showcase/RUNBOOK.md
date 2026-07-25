@@ -46,10 +46,17 @@ facing version of all three.
 
 ## The visual console (recommended for live demos)
 
-A dark, on-brand NOL8 web console that drives `/v1/process` live: pick a use case
-and engine, send a message, watch the redaction resolve with the governed values
-highlighted, see the oracle verdict + match density, and the CPU-cost contrast
-beside it. Dependency-free (Python stdlib), no Grafana, one file you can read.
+A dark, on-brand NOL8 web console that drives `/v1/process` live. Dependency-free
+(Python stdlib), no Grafana. What it does:
+
+- **Prompt catalog** — 18 realistic prompts across the three use cases (plus your own).
+- **Head-to-head** — runs the *same* message through **both engines at once** and
+  shows the redactions side by side with **per-request latency, verified count, match
+  density, and bytes** for each, plus a compare strip (who's faster, outputs identical).
+- **Corpus automation** — one click runs the **whole catalog through both engines** and
+  shows an aggregate dashboard (docs verified, mean/p95 latency, docs/s, density) with a
+  per-document detail table.
+- **Efficiency panel** — the measured ~8-core software tax the FPGA offloads.
 
 ```bash
 # 1) on the box that reaches the engines — leave this running (foreground)

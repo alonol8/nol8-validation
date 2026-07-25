@@ -9,299 +9,320 @@
   @font-face{font-family:'Google Sans';font-weight:500;font-display:swap;src:url('/assets/fonts/GoogleSans-500.woff2') format('woff2');}
   @font-face{font-family:'Google Sans';font-weight:600;font-display:swap;src:url('/assets/fonts/GoogleSans-600.woff2') format('woff2');}
   @font-face{font-family:'Google Sans';font-weight:700;font-display:swap;src:url('/assets/fonts/GoogleSans-700.woff2') format('woff2');}
-
   :root{
-    --charcoal:#404040; --green:#33B046; --light-green:#57DE6B; --mint:#AFFFBB;
-    --silver:#D2D2D2; --white:#FFFFFF;
-    --panel:rgba(0,0,0,.18); --panel-2:rgba(0,0,0,.28); --raise:rgba(255,255,255,.05);
-    --line:rgba(210,210,210,.14); --muted:rgba(210,210,210,.62);
+    --charcoal:#404040;--green:#33B046;--light-green:#57DE6B;--mint:#AFFFBB;
+    --silver:#D2D2D2;--white:#FFFFFF;
+    --panel:rgba(0,0,0,.18);--panel-2:rgba(0,0,0,.28);--raise:rgba(255,255,255,.05);
+    --line:rgba(210,210,210,.14);--muted:rgba(210,210,210,.62);--amber:#e0a53f;--red:#e0662f;
     --radius:14px;
   }
   *{box-sizing:border-box;}
   html,body{margin:0;}
-  body{
-    background:var(--charcoal); color:var(--white);
-    font-family:'Google Sans',system-ui,sans-serif; font-weight:400;
-    line-height:1.5; -webkit-font-smoothing:antialiased;
-    padding:28px clamp(16px,4vw,48px) 64px;
-  }
-  a{color:var(--light-green);}
+  body{background:var(--charcoal);color:var(--white);font-family:'Google Sans',system-ui,sans-serif;
+    line-height:1.5;-webkit-font-smoothing:antialiased;padding:26px clamp(14px,4vw,46px) 64px;}
+  code{font-family:ui-monospace,Menlo,monospace;font-size:.9em;}
   .label{font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--green);font-weight:600;}
-  .muted{color:var(--muted);}
-  .grn{color:var(--green);}
+  .muted{color:var(--muted);} .grn{color:var(--green);}
+  .tnum{font-variant-numeric:tabular-nums;}
 
-  /* header */
-  header{display:flex;align-items:center;gap:18px;flex-wrap:wrap;
-    max-width:1180px;margin:0 auto 22px;padding-bottom:20px;border-bottom:1px solid var(--line);}
-  header img{height:30px;}
-  header .titles{display:flex;flex-direction:column;gap:2px;}
-  header h1{font-size:17px;font-weight:600;margin:0;letter-spacing:.01em;}
+  header{display:flex;align-items:center;gap:16px;flex-wrap:wrap;max-width:1240px;margin:0 auto 20px;
+    padding-bottom:18px;border-bottom:1px solid var(--line);}
+  header img{height:28px;}
+  header .titles{display:flex;flex-direction:column;gap:1px;}
+  header h1{font-size:16px;font-weight:600;margin:0;}
   header .tag{font-size:12px;color:var(--muted);}
   header .spacer{flex:1;}
-  #engine-status{font-size:12px;color:var(--muted);display:flex;gap:14px;align-items:center;}
-  #engine-status .dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--green);
+  #status{font-size:12px;color:var(--muted);}
+  #status .dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--green);
     margin-right:6px;box-shadow:0 0 0 3px rgba(51,176,70,.18);}
 
-  main{max-width:1180px;margin:0 auto;display:grid;gap:20px;}
-
-  .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:22px;}
-  .card > .label{display:block;margin-bottom:14px;}
-
-  /* controls */
-  .controls{display:grid;gap:18px;}
-  .row{display:flex;gap:22px;flex-wrap:wrap;}
-  .field{display:flex;flex-direction:column;gap:9px;}
-  .pillset{display:flex;gap:8px;flex-wrap:wrap;}
-  .pill{border:1px solid var(--line);background:var(--raise);color:var(--white);
-    font:inherit;font-size:13px;padding:8px 14px;border-radius:999px;cursor:pointer;transition:.14s;}
-  .pill:hover{border-color:rgba(210,210,210,.3);}
-  .pill[aria-pressed="true"]{background:var(--green);border-color:var(--green);color:#0f2a15;font-weight:600;}
-  .engine .pill[aria-pressed="true"]{background:var(--green);}
-  textarea{width:100%;min-height:150px;resize:vertical;background:var(--panel-2);color:var(--white);
-    border:1px solid var(--line);border-radius:12px;padding:14px 16px;font:inherit;font-size:14px;line-height:1.55;}
-  textarea:focus{outline:none;border-color:var(--green);}
-  .go{display:flex;align-items:center;gap:16px;flex-wrap:wrap;}
-  button.process{background:var(--green);color:#0f2a15;border:none;font:inherit;font-weight:700;font-size:15px;
-    padding:12px 26px;border-radius:10px;cursor:pointer;transition:.14s;}
-  button.process:hover{background:var(--light-green);}
-  button.process:disabled{opacity:.5;cursor:default;}
+  main{max-width:1240px;margin:0 auto;display:grid;gap:18px;}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:20px;}
+  .card>.label{display:block;margin-bottom:14px;}
+  .row{display:flex;gap:20px;flex-wrap:wrap;align-items:flex-end;}
+  .field{display:flex;flex-direction:column;gap:8px;flex:1;min-width:220px;}
   .scope{font-size:12px;color:var(--muted);}
+  select,textarea{background:var(--panel-2);color:var(--white);border:1px solid var(--line);
+    border-radius:10px;padding:11px 13px;font:inherit;font-size:14px;}
+  select:focus,textarea:focus{outline:none;border-color:var(--green);}
+  textarea{width:100%;min-height:120px;resize:vertical;line-height:1.55;}
+  .go{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-top:16px;}
+  button.process{background:var(--green);color:#0f2a15;border:none;font:inherit;font-weight:700;font-size:15px;
+    padding:12px 24px;border-radius:10px;cursor:pointer;transition:.14s;}
+  button.process:hover{background:var(--light-green);} button.process:disabled{opacity:.5;cursor:default;}
+  button.ghost{background:var(--raise);color:var(--white);border:1px solid var(--line);}
+  .err{color:var(--red);font-size:13px;margin-top:10px;}
 
-  /* results */
-  .io{display:grid;grid-template-columns:1fr 1fr;gap:18px;}
-  @media(max-width:760px){.io{grid-template-columns:1fr;}}
-  .pane{background:var(--panel-2);border:1px solid var(--line);border-radius:12px;padding:16px 18px;min-height:150px;}
-  .pane h3{margin:0 0 10px;font-size:11px;letter-spacing:.16em;text-transform:uppercase;font-weight:600;color:var(--muted);}
-  .pane.after h3{color:var(--green);}
-  .body{white-space:pre-wrap;word-break:break-word;font-size:14px;line-height:1.6;color:#eaeaea;}
+  /* head to head */
+  .before-pane{background:var(--panel-2);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:16px;}
+  .before-pane h3,.after h3{margin:0 0 9px;font-size:11px;letter-spacing:.15em;text-transform:uppercase;font-weight:600;color:var(--muted);}
+  .io{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+  @media(max-width:820px){.io{grid-template-columns:1fr;}}
+  .engcol{display:flex;flex-direction:column;gap:10px;}
+  .ehead{display:flex;align-items:baseline;justify-content:space-between;gap:10px;}
+  .ename{font-size:15px;font-weight:600;}
+  .ename small{color:var(--muted);font-weight:400;font-size:12px;margin-left:4px;}
+  .badge{font-size:11px;font-weight:600;padding:3px 9px;border-radius:999px;border:1px solid var(--line);}
+  .badge.fpga{color:var(--mint);background:rgba(51,176,70,.14);border-color:rgba(51,176,70,.4);}
+  .badge.sw{color:var(--silver);background:var(--raise);}
+  .after{background:var(--panel-2);border:1px solid var(--line);border-radius:12px;padding:14px 16px;min-height:120px;}
+  .after.win{border-color:rgba(51,176,70,.45);}
+  .body{white-space:pre-wrap;word-break:break-word;font-size:13.5px;line-height:1.6;color:#eaeaea;}
   mark.tok{background:rgba(51,176,70,.16);color:var(--mint);border:1px solid rgba(51,176,70,.4);
     border-radius:6px;padding:0 5px;font-weight:600;font-size:.92em;}
-  .after.reveal .body{animation:fade .45s ease;}
-  @keyframes fade{from{opacity:0;transform:translateY(4px);}to{opacity:1;transform:none;}}
-  @media(prefers-reduced-motion:reduce){.after.reveal .body{animation:none;}}
-
-  .oracle{display:flex;align-items:center;gap:18px;flex-wrap:wrap;margin-top:18px;
-    padding-top:16px;border-top:1px solid var(--line);}
-  .verdict{font-size:15px;font-weight:600;display:flex;align-items:center;gap:9px;}
-  .verdict .big{font-size:26px;font-weight:700;color:var(--green);}
-  .verdict.bad .big{color:#e0662f;}
-  .chk{display:flex;flex-wrap:wrap;gap:7px;}
-  .chk span{font-size:12px;background:var(--raise);border:1px solid var(--line);border-radius:999px;
-    padding:5px 11px;color:var(--silver);}
-  .chk span b{color:var(--green);font-weight:600;}
-  .metric{margin-left:auto;text-align:right;}
-  .metric b{color:var(--white);font-weight:600;}
-  .warn{color:#e0a53f;font-size:12px;margin-top:10px;}
+  .reveal{animation:fade .4s ease;} @keyframes fade{from{opacity:0;transform:translateY(4px);}to{opacity:1;transform:none;}}
+  @media(prefers-reduced-motion:reduce){.reveal{animation:none;}}
+  .stats{display:flex;gap:8px;flex-wrap:wrap;}
+  .stat{display:flex;flex-direction:column;gap:1px;background:var(--raise);border:1px solid var(--line);
+    border-radius:9px;padding:7px 12px;min-width:64px;}
+  .stat .v{font-size:16px;font-weight:700;} .stat .v.grn{color:var(--green);}
+  .stat .k{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);}
+  .compare{margin-top:16px;padding-top:14px;border-top:1px solid var(--line);display:flex;gap:22px;
+    flex-wrap:wrap;align-items:center;font-size:14px;}
+  .compare b{color:var(--white);} .compare .ident{color:var(--green);font-weight:600;}
+  .warn{color:var(--amber);font-size:12px;margin-top:10px;}
 
   /* efficiency */
-  .eff-grid{display:grid;grid-template-columns:1fr;gap:14px;}
-  .bar-row{display:grid;grid-template-columns:150px 1fr auto;align-items:center;gap:14px;}
-  @media(max-width:640px){.bar-row{grid-template-columns:110px 1fr;}.bar-row .cores{grid-column:2;text-align:left;}}
-  .bar-row .name{font-size:14px;font-weight:600;}
-  .bar-row .name small{display:block;font-size:11px;color:var(--muted);font-weight:400;}
-  .track{height:26px;background:var(--panel-2);border:1px solid var(--line);border-radius:8px;overflow:hidden;position:relative;}
-  .fill{height:100%;border-radius:7px 0 0 7px;transition:width .8s cubic-bezier(.2,.7,.2,1);display:flex;align-items:center;}
-  .fill.fpga{background:linear-gradient(90deg,rgba(51,176,70,.35),rgba(51,176,70,.55));}
-  .fill.sw{background:rgba(210,210,210,.22);}
-  .fill .seg{height:100%;}
-  .fill .seg.match{background:repeating-linear-gradient(45deg,rgba(224,102,47,.5),rgba(224,102,47,.5) 6px,rgba(224,102,47,.3) 6px,rgba(224,102,47,.3) 12px);}
-  .cores{font-size:14px;font-weight:600;white-space:nowrap;}
-  .cores small{color:var(--muted);font-weight:400;}
-  .eff-note{margin-top:16px;padding-top:14px;border-top:1px solid var(--line);
-    display:flex;gap:26px;flex-wrap:wrap;font-size:13px;}
-  .eff-note .stat{display:flex;flex-direction:column;}
-  .eff-note .stat .n{font-size:22px;font-weight:700;color:var(--green);}
-  .eff-note .stat .k{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);}
-  .foot{max-width:1180px;margin:26px auto 0;font-size:12px;color:var(--muted);text-align:center;}
-  .err{color:#e0662f;font-size:13px;}
+  .bar-row{display:grid;grid-template-columns:150px 1fr auto;align-items:center;gap:14px;margin-bottom:12px;}
+  @media(max-width:640px){.bar-row{grid-template-columns:1fr;gap:6px;}}
+  .bar-row .name{font-size:14px;font-weight:600;} .bar-row .name small{display:block;font-size:11px;color:var(--muted);font-weight:400;}
+  .track{height:24px;background:var(--panel-2);border:1px solid var(--line);border-radius:8px;overflow:hidden;}
+  .fill{height:100%;transition:width .8s cubic-bezier(.2,.7,.2,1);}
+  .fill.fpga{background:linear-gradient(90deg,rgba(51,176,70,.35),rgba(51,176,70,.6));}
+  .fill.sw{background:rgba(210,210,210,.2);position:relative;}
+  .fill .seg{height:100%;background:repeating-linear-gradient(45deg,rgba(224,102,47,.5),rgba(224,102,47,.5) 6px,rgba(224,102,47,.3) 6px,rgba(224,102,47,.3) 12px);float:right;}
+  .cores{font-size:14px;font-weight:600;white-space:nowrap;} .cores small{color:var(--muted);font-weight:400;}
+  .eff-note{margin-top:12px;padding-top:14px;border-top:1px solid var(--line);display:flex;gap:26px;flex-wrap:wrap;}
+  .eff-note .n{font-size:22px;font-weight:700;color:var(--green);} .eff-note .k{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);}
+
+  /* corpus */
+  .agg{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:6px;}
+  @media(max-width:820px){.agg{grid-template-columns:1fr;}}
+  .aggcard{border:1px solid var(--line);border-radius:12px;padding:16px;background:var(--panel-2);}
+  .aggcard.fpga{border-color:rgba(51,176,70,.4);}
+  .aggcard h4{margin:0 0 12px;font-size:15px;font-weight:600;display:flex;justify-content:space-between;align-items:baseline;}
+  .aggcard .grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;}
+  .aggcard .m .v{font-size:20px;font-weight:700;} .aggcard .m .v.grn{color:var(--green);}
+  .aggcard .m .k{font-size:10px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);}
+  table{width:100%;border-collapse:collapse;margin-top:16px;font-size:12.5px;}
+  th,td{text-align:left;padding:7px 9px;border-bottom:1px solid var(--line);}
+  th{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:600;}
+  td.num{text-align:right;font-variant-numeric:tabular-nums;}
+  .ok{color:var(--green);} .bad{color:var(--red);}
+  details summary{cursor:pointer;color:var(--muted);font-size:13px;margin-top:14px;}
+  .foot{max-width:1240px;margin:24px auto 0;font-size:12px;color:var(--muted);text-align:center;}
+  .spin{display:inline-block;width:13px;height:13px;border:2px solid rgba(255,255,255,.25);border-top-color:var(--green);border-radius:50%;animation:sp .7s linear infinite;vertical-align:-2px;}
+  @keyframes sp{to{transform:rotate(360deg);}}
 </style>
 </head>
 <body>
 <header>
   <img src="/assets/logo.svg" alt="NOL8">
-  <div class="titles">
-    <h1>Live Demo Console</h1>
-    <span class="tag">The AI Data Plane · deterministic redaction through <code>/v1/process</code></span>
-  </div>
+  <div class="titles"><h1>Live Demo Console</h1>
+    <span class="tag">The AI Data Plane · deterministic redaction through <code>/v1/process</code></span></div>
   <span class="spacer"></span>
-  <div id="engine-status"><span><span class="dot"></span>engines live</span></div>
+  <div id="status"><span class="dot"></span>Themis (FPGA) &amp; Aergia (RE2) live</div>
 </header>
 
 <main>
   <!-- CONTROLS -->
-  <section class="card controls">
-    <span class="label">Drive the demo</span>
+  <section class="card">
+    <span class="label">Drive it · pick a prompt or write your own</span>
     <div class="row">
       <div class="field">
-        <span class="scope">Use case</span>
-        <div class="pillset" id="usecases"></div>
-      </div>
-      <div class="field">
-        <span class="scope">Engine</span>
-        <div class="pillset engine" id="engines">
-          <button class="pill" data-engine="themis" aria-pressed="true">Themis · FPGA</button>
-          <button class="pill" data-engine="aergia" aria-pressed="false">Aergia · RE2 software</button>
-        </div>
+        <span class="scope">Prompt catalog</span>
+        <select id="catalog"></select>
       </div>
     </div>
-    <div class="field">
+    <div class="field" style="margin-top:14px">
       <span class="scope">Message sent to <code>/v1/process</code> — edit freely</span>
       <textarea id="message" spellcheck="false"></textarea>
     </div>
     <div class="go">
-      <button class="process" id="process">▶ Process</button>
-      <span class="scope">Deterministic literal replacement only — substitution, not enforcement. Verified against the deployed policy.</span>
+      <button class="process" id="process">▶ Process on both engines</button>
+      <span class="scope">Both engines run the <b>same</b> message at once. Deterministic literal replacement only — verified against the deployed policy.</span>
     </div>
     <div class="err" id="error" hidden></div>
   </section>
 
-  <!-- RESULTS -->
-  <section class="card">
-    <span class="label">Result</span>
+  <!-- HEAD TO HEAD -->
+  <section class="card" id="resultCard">
+    <span class="label">Head-to-head · FPGA vs software, same input</span>
+    <div class="before-pane"><h3>Input</h3><div class="body" id="before">— run a prompt —</div></div>
     <div class="io">
-      <div class="pane"><h3>Before · what the caller sent</h3><div class="body" id="before">—</div></div>
-      <div class="pane after" id="afterPane"><h3>After · what the engine returned</h3><div class="body" id="after">—</div></div>
+      <div class="engcol">
+        <div class="ehead"><span class="ename">Themis <small>FPGA</small></span><span class="badge fpga">silicon</span></div>
+        <div class="after" id="after-themis-pane"><h3>After</h3><div class="body" id="after-themis">—</div></div>
+        <div class="stats" id="stats-themis"></div>
+      </div>
+      <div class="engcol">
+        <div class="ehead"><span class="ename">Aergia <small>RE2 software</small></span><span class="badge sw">CPU</span></div>
+        <div class="after" id="after-aergia-pane"><h3>After</h3><div class="body" id="after-aergia">—</div></div>
+        <div class="stats" id="stats-aergia"></div>
+      </div>
     </div>
-    <div class="oracle">
-      <div class="verdict" id="verdict"><span class="big" id="verdictBig">—</span><span id="verdictText" class="muted">run a message to verify</span></div>
-      <div class="chk" id="checks"></div>
-      <div class="metric"><span class="muted">density</span> <b id="density">—</b> <span class="muted">matches/KB</span></div>
-    </div>
+    <div class="compare" id="compare"><span class="muted">Run a prompt to compare latency and confirm both engines agree.</span></div>
     <div class="warn" id="warn" hidden></div>
+  </section>
+
+  <!-- CORPUS -->
+  <section class="card">
+    <span class="label">Corpus automation · run the whole catalog through both engines</span>
+    <div class="go">
+      <button class="process ghost" id="runCorpus">▶ Run corpus (<span id="catCount">…</span> prompts)</button>
+      <span class="scope">Sequential, one connection per engine — clean per-request latency. Every doc verified against the policy.</span>
+    </div>
+    <div id="corpusResult"></div>
   </section>
 
   <!-- EFFICIENCY -->
   <section class="card">
     <span class="label">Why the hardware matters · CPU cost measured on the engine hosts</span>
-    <div class="eff-grid" id="effBars"></div>
+    <div id="effBars"></div>
     <div class="eff-note">
-      <div class="stat"><span class="n" id="taxN">—</span><span class="k">CPU cores the FPGA offloads</span></div>
-      <div class="stat"><span class="n" id="ratioN">—</span><span class="k">host CPU per request vs software</span></div>
-      <div class="stat"><span class="n grn">silicon</span><span class="k">where the matching runs on Themis</span></div>
-      <div class="stat" style="max-width:340px"><span class="k" style="margin-bottom:4px">Poll-mode: these cores burn continuously — the software engine spends its ~8 cores whether or not traffic flows.</span></div>
+      <div><div class="n" id="taxN">—</div><div class="k">cores the FPGA offloads</div></div>
+      <div><div class="n" id="ratioN">—</div><div class="k">host CPU / request vs software</div></div>
+      <div style="max-width:360px"><div class="k" style="line-height:1.5">Poll-mode: the software engine spends its ~8 matching cores continuously — whether or not traffic flows.</div></div>
     </div>
   </section>
 </main>
-
 <div class="foot">NOL8 · one capability, three control points — pre-embedding · pre/post-inference · agent-to-agent. Numbers measured on the live engines.</div>
 
 <script>
-const $ = s => document.querySelector(s);
-const esc = s => s.replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
-let engine = 'themis', scenarios = {}, lastCustom = null;
+const $=s=>document.querySelector(s);
+const esc=s=>s.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+const rx=s=>s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+let catalog=[], EFF=null, lastCustom='';
+const UC={'pre-embedding':'Pre-embedding','pre-post-inference':'Pre / post inference','agent-to-agent':'Agent-to-agent'};
 
-const USECASES = [
-  {key:'pre-embedding',      name:'Pre-embedding'},
-  {key:'pre-post-inference', name:'Pre / post inference'},
-  {key:'agent-to-agent',     name:'Agent-to-agent'},
-  {key:'custom',             name:'Custom'},
-];
-
-function highlight(text, checks){
-  let html = esc(text);
-  const tokens = [...new Set(checks.filter(c=>c.ok).map(c=>c.token))];
-  tokens.sort((a,b)=>b.length-a.length).forEach(tok=>{
-    const re = new RegExp(esc(tok).replace(/[.*+?^${}()|[\]\\]/g,'\\$&'),'g');
-    html = html.replace(re, `<mark class="tok">${esc(tok)}</mark>`);
-  });
+function highlight(text,checks){
+  let html=esc(text);
+  [...new Set(checks.filter(c=>c.ok).map(c=>c.token))].sort((a,b)=>b.length-a.length)
+    .forEach(t=>{html=html.replace(new RegExp(rx(t),'g'),`<mark class="tok">${esc(t)}</mark>`);});
   return html;
 }
+function statChip(v,k,grn){return `<div class="stat"><span class="v ${grn?'grn':''} tnum">${v}</span><span class="k">${k}</span></div>`;}
 
-function renderUsecases(){
-  const wrap = $('#usecases'); wrap.innerHTML='';
-  USECASES.forEach((u,i)=>{
-    const b=document.createElement('button');
-    b.className='pill'; b.textContent=u.name; b.dataset.key=u.key;
-    b.setAttribute('aria-pressed', i===0?'true':'false');
-    b.onclick=()=>selectUsecase(u.key);
-    wrap.appendChild(b);
+function fillCatalog(){
+  const sel=$('#catalog'); sel.innerHTML='';
+  const groups={};
+  catalog.forEach(c=>{(groups[c.usecase]=groups[c.usecase]||[]).push(c);});
+  Object.keys(UC).forEach(uc=>{
+    if(!groups[uc])return;
+    const og=document.createElement('optgroup'); og.label=UC[uc];
+    groups[uc].forEach(c=>{const o=document.createElement('option');o.value=c.id;o.textContent=c.title;og.appendChild(o);});
+    sel.appendChild(og);
   });
-}
-function selectUsecase(key){
-  document.querySelectorAll('#usecases .pill').forEach(p=>p.setAttribute('aria-pressed', p.dataset.key===key));
-  if(key==='custom'){ $('#message').value = lastCustom || ''; }
-  else { $('#message').value = (scenarios[key]||'').trimEnd(); }
-}
-function selectEngine(e){
-  engine=e;
-  document.querySelectorAll('#engines .pill').forEach(p=>p.setAttribute('aria-pressed', p.dataset.engine===e));
-  renderEfficiency(); // re-emphasize active engine
-}
-
-async function process(){
-  const msg = $('#message').value;
-  const btn = $('#process'); const err=$('#error');
-  err.hidden=true; btn.disabled=true; btn.textContent='Processing…';
-  try{
-    const r = await fetch('/api/process',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({message:msg, engine})});
-    const d = await r.json();
-    if(!r.ok) throw new Error(d.error||'request failed');
-    render(d);
-  }catch(e){ err.hidden=false; err.textContent='⚠ '+e.message; }
-  finally{ btn.disabled=false; btn.textContent='▶ Process'; }
-}
-
-function render(d){
-  $('#before').textContent = d.before.trimEnd();
-  const after = $('#after'); after.innerHTML = highlight(d.after.trimEnd(), d.checks);
-  const pane = $('#afterPane'); pane.classList.remove('reveal'); void pane.offsetWidth; pane.classList.add('reveal');
-  const ok = d.verified===d.in_scope && d.in_scope>0;
-  const v=$('#verdict'); v.classList.toggle('bad', !ok);
-  $('#verdictBig').textContent = `${d.verified}/${d.in_scope}`;
-  $('#verdictText').innerHTML = ok
-    ? `governed values redacted &amp; <b class="grn">oracle-verified</b> on ${esc(d.engine_label)}`
-    : `mismatch — output does not match policy`;
-  const chk=$('#checks'); chk.innerHTML='';
-  d.checks.forEach(c=>{
-    const s=document.createElement('span');
-    s.innerHTML = `${c.ok?'✓':'✗'} ${esc(c.value)} → <b>${esc(c.token)}</b>`;
-    if(!c.ok) s.style.color='#e0662f';
-    chk.appendChild(s);
-  });
-  $('#density').textContent = d.matches_per_kb;
-  const warn=$('#warn');
-  if(d.near_misses && d.near_misses.length){
-    warn.hidden=false;
-    warn.textContent = `⚠ ${d.near_misses.length} governed value(s) present but split across a line break — literal matching can't catch them: ` +
-      d.near_misses.map(n=>n.value).join(', ');
-  } else warn.hidden=true;
-}
-
-let EFF=null;
-function renderEfficiency(){
-  if(!EFF) return;
-  const max = Math.max(EFF.themis.total, EFF.aergia.total);
-  const bar = (id, e, cls, activeEngine) => {
-    const wpct = 100*e.total/max;
-    const matchPct = e.total>0 ? 100*e.matching/e.total : 0;
-    const active = activeEngine===id;
-    return `<div class="bar-row" style="opacity:${active?1:.72}">
-      <div class="name">${id==='themis'?'Themis · FPGA':'Aergia · RE2'}<small>${id==='themis'?'matching in silicon':'RE2 lexers on CPU'}</small></div>
-      <div class="track"><div class="fill ${cls}" style="width:${wpct}%">
-        ${e.matching>0?`<div class="seg match" style="width:${matchPct}%" title="RE2 lexer cores"></div>`:''}
-      </div></div>
-      <div class="cores">${e.total} cores <small>· ${(e.rps/1000).toFixed(1)}k rps</small></div>
-    </div>`;
+  const og=document.createElement('optgroup');og.label='—';
+  const o=document.createElement('option');o.value='__custom';o.textContent='✎ Custom message…';og.appendChild(o);sel.appendChild(og);
+  sel.onchange=()=>{
+    if(sel.value==='__custom'){$('#message').value=lastCustom;}
+    else{const c=catalog.find(x=>x.id===sel.value);$('#message').value=c?c.text:'';}
   };
-  $('#effBars').innerHTML = bar('themis',EFF.themis,'fpga',engine)+bar('aergia',EFF.aergia,'sw',engine);
-  $('#taxN').textContent = '~'+EFF.tax_cores;
-  $('#ratioN').textContent = '~'+EFF.ratio+'×';
+  $('#catCount').textContent=catalog.length;
+  if(catalog.length){sel.value=catalog[0].id;$('#message').value=catalog[0].text;}
+}
+
+async function callProcess(engine,message){
+  const r=await fetch('/api/process',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({engine,message})});
+  const d=await r.json(); if(!r.ok) throw new Error(d.error||'failed'); return d;
+}
+
+function renderEngine(eng,d){
+  $('#after-'+eng).innerHTML=highlight(d.after.trimEnd(),d.checks);
+  const pane=$('#after-'+eng+'-pane'); pane.classList.remove('reveal');void pane.offsetWidth;pane.classList.add('reveal');
+  const clean=d.in_scope===0;
+  const ok=d.verified===d.in_scope&&!clean;
+  const st=$('#stats-'+eng);
+  st.innerHTML=
+    statChip(d.latency_ms+'<small class="muted"> ms</small>','latency',eng==='themis')+
+    statChip(clean?'clean':(d.verified+'/'+d.in_scope),'verified',ok)+
+    statChip(d.matches_per_kb,'matches/KB')+
+    statChip(d.message_bytes,'bytes');
+  return {latency:d.latency_ms,verified:d.verified,in_scope:d.in_scope,after:d.after,near:d.near_misses,clean};
+}
+
+async function processBoth(){
+  const msg=$('#message').value; const btn=$('#process'); const err=$('#error');
+  err.hidden=true; btn.disabled=true; btn.innerHTML='<span class="spin"></span> Processing…';
+  $('#before').textContent=msg.trimEnd();
+  try{
+    const [t,a]=await Promise.all([callProcess('themis',msg),callProcess('aergia',msg)]);
+    const R={themis:renderEngine('themis',t),aergia:renderEngine('aergia',a)};
+    // winner outline on lower latency
+    $('#after-themis-pane').classList.toggle('win',R.themis.latency<=R.aergia.latency);
+    $('#after-aergia-pane').classList.toggle('win',R.aergia.latency<R.themis.latency);
+    const identical=R.themis.after===R.aergia.after;
+    const faster=R.themis.latency<=R.aergia.latency?'Themis':'Aergia';
+    const delta=Math.abs(R.themis.latency-R.aergia.latency).toFixed(2);
+    $('#compare').innerHTML=
+      `<span>latency &nbsp;<b class="tnum">${R.themis.latency} ms</b> Themis &nbsp;vs&nbsp; <b class="tnum">${R.aergia.latency} ms</b> Aergia</span>`+
+      `<span><b>${faster}</b> faster by <b class="tnum">${delta} ms</b></span>`+
+      `<span class="${identical?'ident':'bad'}">${identical?'✓ outputs identical':'✗ outputs differ'}</span>`;
+    const warn=$('#warn'); const nm=R.themis.near||[];
+    if(nm.length){warn.hidden=false;warn.textContent=`⚠ ${nm.length} governed value(s) split across a line break — literal matching can't catch them: `+nm.map(n=>n.value).join(', ');}
+    else warn.hidden=true;
+  }catch(e){err.hidden=false;err.textContent='⚠ '+e.message;}
+  finally{btn.disabled=false;btn.textContent='▶ Process on both engines';}
+}
+
+async function runCorpus(){
+  const btn=$('#runCorpus'); const out=$('#corpusResult');
+  btn.disabled=true; btn.innerHTML='<span class="spin"></span> Running…';
+  out.innerHTML='';
+  try{
+    const r=await fetch('/api/batch',{method:'POST'}); const d=await r.json();
+    if(!r.ok) throw new Error(d.error||'failed');
+    const card=(eng,fpga)=>{
+      const g=d[eng].agg;
+      return `<div class="aggcard ${fpga?'fpga':''}">
+        <h4>${eng==='themis'?'Themis · FPGA':'Aergia · RE2 software'}
+          <span class="${g.docs_ok===g.docs?'ok':'bad'}" style="font-size:13px">${g.docs_ok}/${g.docs} docs verified</span></h4>
+        <div class="grid">
+          <div class="m"><div class="v ${fpga?'grn':''} tnum">${g.latency.mean}</div><div class="k">mean ms/doc</div></div>
+          <div class="m"><div class="v tnum">${g.latency.p95}</div><div class="k">p95 ms</div></div>
+          <div class="m"><div class="v tnum">${g.docs_per_s}</div><div class="k">docs/s (1 conn)</div></div>
+          <div class="m"><div class="v tnum">${g.verified}/${g.in_scope}</div><div class="k">values redacted</div></div>
+          <div class="m"><div class="v tnum">${g.matches}</div><div class="k">total matches</div></div>
+          <div class="m"><div class="v tnum">${g.density}</div><div class="k">matches/KB</div></div>
+        </div></div>`;
+    };
+    const rows=d.themis.rows.map((tr,i)=>{
+      const ar=d.aergia.rows[i];
+      const okmark=v=>v.in_scope===0?'<span class="muted">clean</span>':(v.ok?`<span class="ok">${v.verified}/${v.in_scope} ✓</span>`:`<span class="bad">${v.verified}/${v.in_scope} ✗</span>`);
+      return `<tr><td>${esc(tr.title)}</td><td class="muted">${UC[tr.usecase]}</td>
+        <td>${okmark(tr)}</td><td class="num tnum">${tr.latency_ms}</td>
+        <td class="num tnum">${ar.latency_ms}</td><td class="num tnum">${tr.density}</td></tr>`;
+    }).join('');
+    out.innerHTML=`<div class="agg">${card('themis',true)}${card('aergia',false)}</div>
+      <details><summary>per-document detail (${d.themis.rows.length} prompts)</summary>
+      <table><thead><tr><th>prompt</th><th>use case</th><th>verified</th>
+        <th class="num">Themis ms</th><th class="num">Aergia ms</th><th class="num">matches/KB</th></tr></thead>
+        <tbody>${rows}</tbody></table></details>`;
+  }catch(e){out.innerHTML=`<div class="err">⚠ ${e.message}</div>`;}
+  finally{btn.disabled=false;btn.innerHTML='▶ Run corpus (<span id="catCount">'+catalog.length+'</span> prompts)';}
+}
+
+function renderEfficiency(){
+  if(!EFF)return;
+  const max=Math.max(EFF.themis.total,EFF.aergia.total);
+  const bar=(id,e,cls)=>{
+    const w=100*e.total/max, m=e.total>0?100*e.matching/e.total:0;
+    return `<div class="bar-row"><div class="name">${id==='themis'?'Themis · FPGA':'Aergia · RE2'}<small>${id==='themis'?'matching in silicon':'RE2 lexers on CPU'}</small></div>
+      <div class="track"><div class="fill ${cls}" style="width:${w}%">${e.matching>0?`<div class="seg" style="width:${m}%"></div>`:''}</div></div>
+      <div class="cores">${e.total} cores <small>· ${(e.rps/1000).toFixed(1)}k rps</small></div></div>`;
+  };
+  $('#effBars').innerHTML=bar('themis',EFF.themis,'fpga')+bar('aergia',EFF.aergia,'sw');
+  $('#taxN').textContent='~'+EFF.tax_cores; $('#ratioN').textContent='~'+EFF.ratio+'×';
 }
 
 async function boot(){
-  renderUsecases();
-  document.querySelectorAll('#engines .pill').forEach(p=>p.onclick=()=>selectEngine(p.dataset.engine));
-  $('#process').onclick=process;
-  $('#message').addEventListener('input',()=>{
-    const active=document.querySelector('#usecases .pill[aria-pressed="true"]');
-    if(active && active.dataset.key==='custom') lastCustom=$('#message').value;
-  });
-  try{
-    scenarios = await (await fetch('/api/scenarios')).json();
-    selectUsecase('pre-embedding');
-  }catch(e){ $('#message').value='(could not load scenarios — type a message)'; }
-  try{ EFF = await (await fetch('/api/efficiency')).json(); renderEfficiency(); }catch(e){}
+  $('#process').onclick=processBoth;
+  $('#runCorpus').onclick=runCorpus;
+  $('#message').addEventListener('input',()=>{if($('#catalog').value==='__custom')lastCustom=$('#message').value;});
+  try{catalog=await (await fetch('/api/catalog')).json(); fillCatalog();}catch(e){}
+  try{EFF=await (await fetch('/api/efficiency')).json(); renderEfficiency();}catch(e){}
 }
 boot();
 </script>
