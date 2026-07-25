@@ -103,18 +103,21 @@ We fixed everything — same message size, same load — and changed **only the 
 of rules in the policy**, from 1,000 up. The question: does the FPGA's edge grow
 with policy size?
 
-**Result (initial; a confirmatory run is underway as of this writing):**
+**Result (confirmed — median of 3 repeats per point, spread under 1%):**
 
 | Rules in policy | FPGA (Themis) | Software (RE2) | FPGA advantage |
 |---|---|---|---|
-| 1,000 | ~29,000 req/s | ~26,000 req/s | ~1.1× |
-| 2,000 | ~29,000 req/s | ~26,000 req/s | ~1.1× |
-| 4,000 | ~28,000 req/s | ~26,000 req/s | ~parity |
-| 8,000 | ~28,000 req/s | **~10,600 req/s** | **~2.7×** |
+| 1,000 | ~28,200 req/s | ~26,200 req/s | ~1.1× |
+| 2,000 | ~27,400 req/s | ~26,100 req/s | ~1.1× |
+| 4,000 | ~27,900 req/s | ~26,200 req/s | ~1.1× |
+| 6,000 | ~28,100 req/s | ~26,200 req/s | ~1.1× |
+| 8,000 | ~28,800 req/s | **~8,400 req/s** | **~3.4×** |
 
-The software engine held steady up to 4,000 rules and then **fell off a cliff at
-8,000** — throughput more than halved and its response time tripled. The FPGA
-stayed flat the whole way.
+The software engine held **dead flat at ~26,000 req/s all the way through 6,000
+rules**, then **fell off a cliff at 8,000** — throughput dropped by roughly
+two-thirds and its response time (99th percentile) went from 19 ms to 79 ms. The
+FPGA stayed flat at ~28,000 req/s and ~16 ms the entire way. **At 8,000 rules the
+FPGA does 3.4× the work of the software engine, at a quarter of the latency.**
 
 **Why this happens (and why it's not a fluke):** a software matcher builds an
 internal lookup table that grows with the number of rules. Past a point that table
@@ -134,11 +137,12 @@ doing this in silicon.
   it. Until then, "it's the delivery path, not the matcher" is proven; "it's
   specifically component X" is a hypothesis.
 - **How high the policy-size advantage goes.** We hit two honest ceilings: the
-  engine wouldn't *accept* a policy past roughly 16,000 rules (a deployment cap,
-  not a speed result), and our data generator refused to build a 32,000-rule set
-  because the values started overlapping in a way that would corrupt the test. So
-  we have a clean, dramatic result at 8,000 rules and a confirmatory run in
-  progress; we have not yet measured the true top end.
+  engine wouldn't *accept* a policy larger than roughly 8,000–10,000 rules (a
+  deployment cap, not a speed result — 10,000 was refused), and our data generator
+  wouldn't build a 32,000-rule set because the values started overlapping in a way
+  that would corrupt the test. So we have a clean, confirmed result up to 8,000
+  rules — where the software engine has already fallen off its cliff — but we have
+  not yet measured beyond the point the engine will currently accept.
 
 ---
 
@@ -177,8 +181,11 @@ doing this in silicon.
   way).
 - **Big-payload ceiling:** both engines ~135–155 MB/s aggregate; the limit is
   byte delivery, and ~1 MB requests are rejected by a shared front-door size cap.
-- **Policy-size cliff (initial):** software throughput ~26,000 → ~10,600 req/s
-  going from 4,000 to 8,000 rules; FPGA flat at ~28,000; ~2.7× at 8,000 rules.
+- **Policy-size cliff (confirmed, median of 3 repeats):** software throughput held
+  flat at ~26,000 req/s through 6,000 rules, then dropped to ~8,400 at 8,000 (99th-
+  percentile latency 19 ms → 79 ms); FPGA flat at ~28,000 req/s and ~16 ms
+  throughout; **~3.4× at 8,000 rules.** Deployment ceiling observed between 8,000
+  and 10,000 rules.
 
 *All figures measured on the live engines. Test harness, policies, and raw
 results are versioned in the repo; every run is reproducible from a single
