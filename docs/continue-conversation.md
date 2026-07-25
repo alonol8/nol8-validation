@@ -12,6 +12,16 @@ DP4; the rule-count "cliff" is NOT settled (see below).
   Jamie explicitly clears it. Everything is currently stopped (no dp4driver, 0 engine
   connections, console down, engines on the small starter policy).
 - Doc edits, local analysis, and reading committed files are fine. Engine calls are not.
+- **Alon will hand Jamie RAW numbers from Hydra runs.** When they arrive: assess honestly,
+  compare his methodology to ours, and especially check **whether Hydra reproduces the
+  ~8.4k Aergia@8k collapse** — if he can trigger it on demand, that's the trigger we've been
+  missing (see integrity item 1). Don't assume our numbers or his are "the" truth; reconcile.
+- **Interrogate the Hydra code (read-only review, when Jamie clears it).** Jamie wants to
+  understand what Hydra's load generator actually does under the hood (how it drives load,
+  concurrency model, what it measures, connection reuse, warmup) — this directly affects how
+  to reconcile his numbers with ours. CONSTRAINT: my SSH key is NOT authorized on
+  `hydra-demo`, and we must not step on Alon — so this is a **pure read/review**, needs Jamie
+  to grant read access or point me at the Hydra source. Do NOT run Hydra or touch his setup.
 
 ## What this is
 
@@ -118,6 +128,9 @@ This makes the demo self-evident (generate→policy→deploy→run→results), n
 
 ## Next steps (in order, AFTER Alon clears + tests resume)
 
+0. **Ingest Alon's raw Hydra numbers** (arrive via Jamie): reconcile with ours; does Hydra
+   reproduce the 8.4k collapse? **Review Hydra's code** (read-only, needs access from Jamie)
+   to understand its load model — this may explain any divergence and reveal the trigger.
 1. **Resolve item 1:** multi-rep 8k stability characterization, raw saved to
    `artifacts/evidence/`, find the collapse trigger, then honestly rewrite the brief
    (bistable, not "no cliff"). This gates any external re-share.
