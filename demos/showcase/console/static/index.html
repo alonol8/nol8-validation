@@ -1,0 +1,309 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NOL8 · Live Demo Console</title>
+<style>
+  @font-face{font-family:'Google Sans';font-weight:400;font-display:swap;src:url('/assets/fonts/GoogleSans-400.woff2') format('woff2');}
+  @font-face{font-family:'Google Sans';font-weight:500;font-display:swap;src:url('/assets/fonts/GoogleSans-500.woff2') format('woff2');}
+  @font-face{font-family:'Google Sans';font-weight:600;font-display:swap;src:url('/assets/fonts/GoogleSans-600.woff2') format('woff2');}
+  @font-face{font-family:'Google Sans';font-weight:700;font-display:swap;src:url('/assets/fonts/GoogleSans-700.woff2') format('woff2');}
+
+  :root{
+    --charcoal:#404040; --green:#33B046; --light-green:#57DE6B; --mint:#AFFFBB;
+    --silver:#D2D2D2; --white:#FFFFFF;
+    --panel:rgba(0,0,0,.18); --panel-2:rgba(0,0,0,.28); --raise:rgba(255,255,255,.05);
+    --line:rgba(210,210,210,.14); --muted:rgba(210,210,210,.62);
+    --radius:14px;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;}
+  body{
+    background:var(--charcoal); color:var(--white);
+    font-family:'Google Sans',system-ui,sans-serif; font-weight:400;
+    line-height:1.5; -webkit-font-smoothing:antialiased;
+    padding:28px clamp(16px,4vw,48px) 64px;
+  }
+  a{color:var(--light-green);}
+  .label{font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--green);font-weight:600;}
+  .muted{color:var(--muted);}
+  .grn{color:var(--green);}
+
+  /* header */
+  header{display:flex;align-items:center;gap:18px;flex-wrap:wrap;
+    max-width:1180px;margin:0 auto 22px;padding-bottom:20px;border-bottom:1px solid var(--line);}
+  header img{height:30px;}
+  header .titles{display:flex;flex-direction:column;gap:2px;}
+  header h1{font-size:17px;font-weight:600;margin:0;letter-spacing:.01em;}
+  header .tag{font-size:12px;color:var(--muted);}
+  header .spacer{flex:1;}
+  #engine-status{font-size:12px;color:var(--muted);display:flex;gap:14px;align-items:center;}
+  #engine-status .dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--green);
+    margin-right:6px;box-shadow:0 0 0 3px rgba(51,176,70,.18);}
+
+  main{max-width:1180px;margin:0 auto;display:grid;gap:20px;}
+
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:22px;}
+  .card > .label{display:block;margin-bottom:14px;}
+
+  /* controls */
+  .controls{display:grid;gap:18px;}
+  .row{display:flex;gap:22px;flex-wrap:wrap;}
+  .field{display:flex;flex-direction:column;gap:9px;}
+  .pillset{display:flex;gap:8px;flex-wrap:wrap;}
+  .pill{border:1px solid var(--line);background:var(--raise);color:var(--white);
+    font:inherit;font-size:13px;padding:8px 14px;border-radius:999px;cursor:pointer;transition:.14s;}
+  .pill:hover{border-color:rgba(210,210,210,.3);}
+  .pill[aria-pressed="true"]{background:var(--green);border-color:var(--green);color:#0f2a15;font-weight:600;}
+  .engine .pill[aria-pressed="true"]{background:var(--green);}
+  textarea{width:100%;min-height:150px;resize:vertical;background:var(--panel-2);color:var(--white);
+    border:1px solid var(--line);border-radius:12px;padding:14px 16px;font:inherit;font-size:14px;line-height:1.55;}
+  textarea:focus{outline:none;border-color:var(--green);}
+  .go{display:flex;align-items:center;gap:16px;flex-wrap:wrap;}
+  button.process{background:var(--green);color:#0f2a15;border:none;font:inherit;font-weight:700;font-size:15px;
+    padding:12px 26px;border-radius:10px;cursor:pointer;transition:.14s;}
+  button.process:hover{background:var(--light-green);}
+  button.process:disabled{opacity:.5;cursor:default;}
+  .scope{font-size:12px;color:var(--muted);}
+
+  /* results */
+  .io{display:grid;grid-template-columns:1fr 1fr;gap:18px;}
+  @media(max-width:760px){.io{grid-template-columns:1fr;}}
+  .pane{background:var(--panel-2);border:1px solid var(--line);border-radius:12px;padding:16px 18px;min-height:150px;}
+  .pane h3{margin:0 0 10px;font-size:11px;letter-spacing:.16em;text-transform:uppercase;font-weight:600;color:var(--muted);}
+  .pane.after h3{color:var(--green);}
+  .body{white-space:pre-wrap;word-break:break-word;font-size:14px;line-height:1.6;color:#eaeaea;}
+  mark.tok{background:rgba(51,176,70,.16);color:var(--mint);border:1px solid rgba(51,176,70,.4);
+    border-radius:6px;padding:0 5px;font-weight:600;font-size:.92em;}
+  .after.reveal .body{animation:fade .45s ease;}
+  @keyframes fade{from{opacity:0;transform:translateY(4px);}to{opacity:1;transform:none;}}
+  @media(prefers-reduced-motion:reduce){.after.reveal .body{animation:none;}}
+
+  .oracle{display:flex;align-items:center;gap:18px;flex-wrap:wrap;margin-top:18px;
+    padding-top:16px;border-top:1px solid var(--line);}
+  .verdict{font-size:15px;font-weight:600;display:flex;align-items:center;gap:9px;}
+  .verdict .big{font-size:26px;font-weight:700;color:var(--green);}
+  .verdict.bad .big{color:#e0662f;}
+  .chk{display:flex;flex-wrap:wrap;gap:7px;}
+  .chk span{font-size:12px;background:var(--raise);border:1px solid var(--line);border-radius:999px;
+    padding:5px 11px;color:var(--silver);}
+  .chk span b{color:var(--green);font-weight:600;}
+  .metric{margin-left:auto;text-align:right;}
+  .metric b{color:var(--white);font-weight:600;}
+  .warn{color:#e0a53f;font-size:12px;margin-top:10px;}
+
+  /* efficiency */
+  .eff-grid{display:grid;grid-template-columns:1fr;gap:14px;}
+  .bar-row{display:grid;grid-template-columns:150px 1fr auto;align-items:center;gap:14px;}
+  @media(max-width:640px){.bar-row{grid-template-columns:110px 1fr;}.bar-row .cores{grid-column:2;text-align:left;}}
+  .bar-row .name{font-size:14px;font-weight:600;}
+  .bar-row .name small{display:block;font-size:11px;color:var(--muted);font-weight:400;}
+  .track{height:26px;background:var(--panel-2);border:1px solid var(--line);border-radius:8px;overflow:hidden;position:relative;}
+  .fill{height:100%;border-radius:7px 0 0 7px;transition:width .8s cubic-bezier(.2,.7,.2,1);display:flex;align-items:center;}
+  .fill.fpga{background:linear-gradient(90deg,rgba(51,176,70,.35),rgba(51,176,70,.55));}
+  .fill.sw{background:rgba(210,210,210,.22);}
+  .fill .seg{height:100%;}
+  .fill .seg.match{background:repeating-linear-gradient(45deg,rgba(224,102,47,.5),rgba(224,102,47,.5) 6px,rgba(224,102,47,.3) 6px,rgba(224,102,47,.3) 12px);}
+  .cores{font-size:14px;font-weight:600;white-space:nowrap;}
+  .cores small{color:var(--muted);font-weight:400;}
+  .eff-note{margin-top:16px;padding-top:14px;border-top:1px solid var(--line);
+    display:flex;gap:26px;flex-wrap:wrap;font-size:13px;}
+  .eff-note .stat{display:flex;flex-direction:column;}
+  .eff-note .stat .n{font-size:22px;font-weight:700;color:var(--green);}
+  .eff-note .stat .k{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);}
+  .foot{max-width:1180px;margin:26px auto 0;font-size:12px;color:var(--muted);text-align:center;}
+  .err{color:#e0662f;font-size:13px;}
+</style>
+</head>
+<body>
+<header>
+  <img src="/assets/logo.svg" alt="NOL8">
+  <div class="titles">
+    <h1>Live Demo Console</h1>
+    <span class="tag">The AI Data Plane · deterministic redaction through <code>/v1/process</code></span>
+  </div>
+  <span class="spacer"></span>
+  <div id="engine-status"><span><span class="dot"></span>engines live</span></div>
+</header>
+
+<main>
+  <!-- CONTROLS -->
+  <section class="card controls">
+    <span class="label">Drive the demo</span>
+    <div class="row">
+      <div class="field">
+        <span class="scope">Use case</span>
+        <div class="pillset" id="usecases"></div>
+      </div>
+      <div class="field">
+        <span class="scope">Engine</span>
+        <div class="pillset engine" id="engines">
+          <button class="pill" data-engine="themis" aria-pressed="true">Themis · FPGA</button>
+          <button class="pill" data-engine="aergia" aria-pressed="false">Aergia · RE2 software</button>
+        </div>
+      </div>
+    </div>
+    <div class="field">
+      <span class="scope">Message sent to <code>/v1/process</code> — edit freely</span>
+      <textarea id="message" spellcheck="false"></textarea>
+    </div>
+    <div class="go">
+      <button class="process" id="process">▶ Process</button>
+      <span class="scope">Deterministic literal replacement only — substitution, not enforcement. Verified against the deployed policy.</span>
+    </div>
+    <div class="err" id="error" hidden></div>
+  </section>
+
+  <!-- RESULTS -->
+  <section class="card">
+    <span class="label">Result</span>
+    <div class="io">
+      <div class="pane"><h3>Before · what the caller sent</h3><div class="body" id="before">—</div></div>
+      <div class="pane after" id="afterPane"><h3>After · what the engine returned</h3><div class="body" id="after">—</div></div>
+    </div>
+    <div class="oracle">
+      <div class="verdict" id="verdict"><span class="big" id="verdictBig">—</span><span id="verdictText" class="muted">run a message to verify</span></div>
+      <div class="chk" id="checks"></div>
+      <div class="metric"><span class="muted">density</span> <b id="density">—</b> <span class="muted">matches/KB</span></div>
+    </div>
+    <div class="warn" id="warn" hidden></div>
+  </section>
+
+  <!-- EFFICIENCY -->
+  <section class="card">
+    <span class="label">Why the hardware matters · CPU cost measured on the engine hosts</span>
+    <div class="eff-grid" id="effBars"></div>
+    <div class="eff-note">
+      <div class="stat"><span class="n" id="taxN">—</span><span class="k">CPU cores the FPGA offloads</span></div>
+      <div class="stat"><span class="n" id="ratioN">—</span><span class="k">host CPU per request vs software</span></div>
+      <div class="stat"><span class="n grn">silicon</span><span class="k">where the matching runs on Themis</span></div>
+      <div class="stat" style="max-width:340px"><span class="k" style="margin-bottom:4px">Poll-mode: these cores burn continuously — the software engine spends its ~8 cores whether or not traffic flows.</span></div>
+    </div>
+  </section>
+</main>
+
+<div class="foot">NOL8 · one capability, three control points — pre-embedding · pre/post-inference · agent-to-agent. Numbers measured on the live engines.</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => s.replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+let engine = 'themis', scenarios = {}, lastCustom = null;
+
+const USECASES = [
+  {key:'pre-embedding',      name:'Pre-embedding'},
+  {key:'pre-post-inference', name:'Pre / post inference'},
+  {key:'agent-to-agent',     name:'Agent-to-agent'},
+  {key:'custom',             name:'Custom'},
+];
+
+function highlight(text, checks){
+  let html = esc(text);
+  const tokens = [...new Set(checks.filter(c=>c.ok).map(c=>c.token))];
+  tokens.sort((a,b)=>b.length-a.length).forEach(tok=>{
+    const re = new RegExp(esc(tok).replace(/[.*+?^${}()|[\]\\]/g,'\\$&'),'g');
+    html = html.replace(re, `<mark class="tok">${esc(tok)}</mark>`);
+  });
+  return html;
+}
+
+function renderUsecases(){
+  const wrap = $('#usecases'); wrap.innerHTML='';
+  USECASES.forEach((u,i)=>{
+    const b=document.createElement('button');
+    b.className='pill'; b.textContent=u.name; b.dataset.key=u.key;
+    b.setAttribute('aria-pressed', i===0?'true':'false');
+    b.onclick=()=>selectUsecase(u.key);
+    wrap.appendChild(b);
+  });
+}
+function selectUsecase(key){
+  document.querySelectorAll('#usecases .pill').forEach(p=>p.setAttribute('aria-pressed', p.dataset.key===key));
+  if(key==='custom'){ $('#message').value = lastCustom || ''; }
+  else { $('#message').value = (scenarios[key]||'').trimEnd(); }
+}
+function selectEngine(e){
+  engine=e;
+  document.querySelectorAll('#engines .pill').forEach(p=>p.setAttribute('aria-pressed', p.dataset.engine===e));
+  renderEfficiency(); // re-emphasize active engine
+}
+
+async function process(){
+  const msg = $('#message').value;
+  const btn = $('#process'); const err=$('#error');
+  err.hidden=true; btn.disabled=true; btn.textContent='Processing…';
+  try{
+    const r = await fetch('/api/process',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({message:msg, engine})});
+    const d = await r.json();
+    if(!r.ok) throw new Error(d.error||'request failed');
+    render(d);
+  }catch(e){ err.hidden=false; err.textContent='⚠ '+e.message; }
+  finally{ btn.disabled=false; btn.textContent='▶ Process'; }
+}
+
+function render(d){
+  $('#before').textContent = d.before.trimEnd();
+  const after = $('#after'); after.innerHTML = highlight(d.after.trimEnd(), d.checks);
+  const pane = $('#afterPane'); pane.classList.remove('reveal'); void pane.offsetWidth; pane.classList.add('reveal');
+  const ok = d.verified===d.in_scope && d.in_scope>0;
+  const v=$('#verdict'); v.classList.toggle('bad', !ok);
+  $('#verdictBig').textContent = `${d.verified}/${d.in_scope}`;
+  $('#verdictText').innerHTML = ok
+    ? `governed values redacted &amp; <b class="grn">oracle-verified</b> on ${esc(d.engine_label)}`
+    : `mismatch — output does not match policy`;
+  const chk=$('#checks'); chk.innerHTML='';
+  d.checks.forEach(c=>{
+    const s=document.createElement('span');
+    s.innerHTML = `${c.ok?'✓':'✗'} ${esc(c.value)} → <b>${esc(c.token)}</b>`;
+    if(!c.ok) s.style.color='#e0662f';
+    chk.appendChild(s);
+  });
+  $('#density').textContent = d.matches_per_kb;
+  const warn=$('#warn');
+  if(d.near_misses && d.near_misses.length){
+    warn.hidden=false;
+    warn.textContent = `⚠ ${d.near_misses.length} governed value(s) present but split across a line break — literal matching can't catch them: ` +
+      d.near_misses.map(n=>n.value).join(', ');
+  } else warn.hidden=true;
+}
+
+let EFF=null;
+function renderEfficiency(){
+  if(!EFF) return;
+  const max = Math.max(EFF.themis.total, EFF.aergia.total);
+  const bar = (id, e, cls, activeEngine) => {
+    const wpct = 100*e.total/max;
+    const matchPct = e.total>0 ? 100*e.matching/e.total : 0;
+    const active = activeEngine===id;
+    return `<div class="bar-row" style="opacity:${active?1:.72}">
+      <div class="name">${id==='themis'?'Themis · FPGA':'Aergia · RE2'}<small>${id==='themis'?'matching in silicon':'RE2 lexers on CPU'}</small></div>
+      <div class="track"><div class="fill ${cls}" style="width:${wpct}%">
+        ${e.matching>0?`<div class="seg match" style="width:${matchPct}%" title="RE2 lexer cores"></div>`:''}
+      </div></div>
+      <div class="cores">${e.total} cores <small>· ${(e.rps/1000).toFixed(1)}k rps</small></div>
+    </div>`;
+  };
+  $('#effBars').innerHTML = bar('themis',EFF.themis,'fpga',engine)+bar('aergia',EFF.aergia,'sw',engine);
+  $('#taxN').textContent = '~'+EFF.tax_cores;
+  $('#ratioN').textContent = '~'+EFF.ratio+'×';
+}
+
+async function boot(){
+  renderUsecases();
+  document.querySelectorAll('#engines .pill').forEach(p=>p.onclick=()=>selectEngine(p.dataset.engine));
+  $('#process').onclick=process;
+  $('#message').addEventListener('input',()=>{
+    const active=document.querySelector('#usecases .pill[aria-pressed="true"]');
+    if(active && active.dataset.key==='custom') lastCustom=$('#message').value;
+  });
+  try{
+    scenarios = await (await fetch('/api/scenarios')).json();
+    selectUsecase('pre-embedding');
+  }catch(e){ $('#message').value='(could not load scenarios — type a message)'; }
+  try{ EFF = await (await fetch('/api/efficiency')).json(); renderEfficiency(); }catch(e){}
+}
+boot();
+</script>
+</body>
+</html>
