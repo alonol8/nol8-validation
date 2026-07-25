@@ -91,8 +91,8 @@ def measure(s: "re2.Set", docs: list[str], sample_bytes: int, min_cpu_s: float) 
     t0 = time.process_time()
     while time.process_time() - t0 < min_cpu_s:
         for d in docs:
-            m = s.Match(d)
-            total_matches += len(m)
+            m = s.Match(d)          # RE2 Set.Match returns None when nothing matched
+            total_matches += len(m) if m else 0
         total_bytes += sample_bytes
         passes += 1
     cpu = time.process_time() - t0
