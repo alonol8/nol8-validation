@@ -1,0 +1,8 @@
+Knowledge Base article KB-2231 — Onboarding runbook
+
+This article covers onboarding for Apex Treasury Services and the internal
+Granite Claims integration. For settlement reconciliation, reference the
+PCI settlement archive and follow the four-eyes approval flow.
+
+Ingestion note: this document is about to be chunked and embedded into the
+support knowledge base vector index used by the assistant's retrieval layer.

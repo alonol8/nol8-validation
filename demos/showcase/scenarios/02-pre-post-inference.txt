@@ -1,0 +1,8 @@
+User prompt to the support assistant:
+
+"Draft a professional email to Northwind Trading about the disputed charge on
+payment card 5555 5555 5555 4444 tied to account ACC-9914-2208. Apologize for
+the delay and confirm the refund timeline."
+
+This prompt is on its way to a third-party LLM. Whatever is in it reaches the
+model, its provider, and its logs.

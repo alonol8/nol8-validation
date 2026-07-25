@@ -68,6 +68,17 @@ def main() -> int:
     # Only values that actually appear in this message are in scope for the oracle.
     expected = [(lit, tok) for lit, tok in pairs if lit and lit in original]
 
+    # Near-misses: a governed value is present but split by whitespace/newlines, so
+    # exact literal matching (correctly) won't catch it. Warn — this is the usual
+    # cause of "why is that value still in the output?" on real, wrapped text.
+    def _norm(s: str) -> str:
+        return re.sub(r"\s+", " ", s).strip()
+    norm_original = _norm(original)
+    near_misses = [
+        (lit, tok) for lit, tok in pairs
+        if lit and lit not in original and _norm(lit) in norm_original
+    ]
+
     processed = call_process(args.endpoint, args.token, original)
 
     # Oracle: every in-scope governed value must be gone; its token must appear.
@@ -85,6 +96,7 @@ def main() -> int:
     if args.json:
         print(json.dumps(
             {"engine": args.engine_label, "in_scope": total, "verified": passed,
+             "near_misses": [{"value": l, "token": t} for l, t in near_misses],
              "original": original, "processed": processed, "checks": checks}, indent=2))
         return 0 if passed == total and total > 0 else 1
 
@@ -102,6 +114,12 @@ def main() -> int:
         detail = "" if c["ok"] else (
             "  (still present!)" if not c["redacted"] else "  (token missing!)")
         print(f"   {mark}  {c['value']!r:40s} → {c['token']}{detail}")
+    if near_misses:
+        print(f"\n  ⚠  {len(near_misses)} governed value(s) present but split across a line "
+              "break/whitespace,\n     so exact literal matching won't catch them "
+              "(fix the source formatting):")
+        for lit, tok in near_misses:
+            print(f"       • {lit!r} → {tok}")
     print(f"\n  {passed}/{total} governed values redacted and verified.")
     if passed == total:
         print("  Deterministic literal replacement confirmed against the oracle.\n")

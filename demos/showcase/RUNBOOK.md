@@ -1,14 +1,22 @@
 # NOL8 Showcase Demo — SA Runbook
 
-A self-contained, SA-runnable demo you can drive live. Two short acts:
+A self-contained, SA-runnable demo you can drive live. Two acts:
 
-1. **It works, provably** — deterministic redaction of known sensitive values
-   through the real customer API (`/v1/process`), verified against an oracle.
+1. **It works, provably — at all three control points.** The *same* deterministic
+   redaction through the real customer API (`/v1/process`), shown where customers
+   actually need it: **pre-embedding**, **pre/post-inference**, and **agent-to-agent** —
+   each verified against an oracle.
 2. **Why the hardware matters** — the FPGA does that matching in silicon, freeing
    ~8 CPU cores the software approach has to burn continuously.
 
 No Grafana, no external load generator, no cloud dashboard — just the live engines
-and two scripts. Everything here is measured, not asserted.
+and a couple of scripts. Everything here is measured, not asserted.
+
+**One capability, three use cases.** NOL8 does one thing — deterministic literal
+replacement through `/v1/process`. What changes per use case is only *where in the
+pipeline it sits*. Each has a benchmark-depth proof already: DP1 (pre-index),
+DP2 (pre/post-inference), DP3 (agent mesh); the showcase is the runnable, customer-
+facing version of all three.
 
 ## Honest scope (say this up front)
 
@@ -28,50 +36,57 @@ and two scripts. Everything here is measured, not asserted.
 
 ---
 
-## Act 1 — Live redaction through `/v1/process`  (run on `nol8-demo`)
+## Act 1 — The three use cases through `/v1/process`  (run on `nol8-demo`)
 
 The customer-facing surface is a single synchronous HTTPS call — no SDK, no agent,
-no API key in the request. Send a message, get the processed message back.
+no API key in the request. Send a message, get the processed message back. The tour
+runs all three use cases back-to-back, oracle-verifying each:
 
 ```bash
 ssh nol8-demo
 cd /opt/nol8/nol8-validation
-bash demos/showcase/redact-demo.sh                 # Themis (FPGA, :443)
+bash demos/showcase/usecases-demo.sh               # Themis (FPGA, :443)
 ```
 
-It deploys the known-values policy, sends `sample-message.txt` (a realistic SOC
-alert containing a watched customer, a payment card, a blocked IP, a sanctioned
-entity, a compromised account, and an internal project), and prints **BEFORE /
-AFTER / ORACLE**. Expected finish:
+| # | Use case | Control point | Depth |
+|---|---|---|---|
+| 1 | **Pre-embedding** (RAG ingestion) | Redact before text is chunked and embedded — sensitive values never enter the vector store. | DP1 |
+| 2 | **Pre/post-inference** (model boundary) | Redact before the prompt reaches the model — the LLM, its provider, and its logs never see them. | DP2 |
+| 3 | **Agent-to-agent** (mesh hop) | Redact at the hop between agents — the receiving agent acts only on cleaned data. | DP3 |
+
+Each prints **BEFORE / AFTER / ORACLE**; expected finish:
 
 ```
-  6/6 governed values redacted and verified.
-  Deterministic literal replacement confirmed against the oracle.
+  TOUR COMPLETE — 3/3 use cases redacted and oracle-verified on Themis (FPGA)
 ```
 
 **The oracle is derived from the policy itself** — for every governed value present
 in the input, it checks the raw value is gone and the policy's token is present. A
-green result means the engine's output provably matches the policy.
+green result means the engine's output provably matches the policy. (If a governed
+value is split across a line break it can't match as a literal — the tool warns you
+rather than silently miss it.)
 
-**Prove correctness parity** — run the identical message through the software engine:
+**Prove correctness parity** — run the identical tour through the software engine:
 
 ```bash
-ENGINE=aergia bash demos/showcase/redact-demo.sh   # RE2 software (:444)
+ENGINE=aergia bash demos/showcase/usecases-demo.sh   # RE2 software (:444)
 ```
 
-Both return the **same** output. That sets up Act 2: *same correctness — very
-different cost.*
+Both engines return the **same** output. That sets up Act 2: *same correctness —
+very different cost.*
 
-**Make it theirs:** point it at any message.
+**Focus on one, or make it theirs** — the single-message variant takes any file:
 
 ```bash
+bash demos/showcase/redact-demo.sh                       # one SOC-alert example
 MSG_FILE=/path/to/their-sample.txt bash demos/showcase/redact-demo.sh
 ```
 
-**What to say:** "This is the actual production call. The values that come back
-are gone, deterministically, every time — and we just proved it against the policy,
-not against my word. The FPGA and a standard software matcher produce identical
-output. Now look at what each one costs to run."
+**What to say:** "Same engine, same production call, three places a customer needs
+it — before you embed, around the model, and between agents. The governed values
+come back gone, deterministically, every time, and we just proved it against the
+policy, not against my word. The FPGA and a standard software matcher produce
+identical output. Now look at what each one costs to run."
 
 ---
 
