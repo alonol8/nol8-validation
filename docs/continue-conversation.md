@@ -1,6 +1,7 @@
 # Continue conversation — NOL8 validation / demos
 
-Rewritten 2026-07-25. Compaction-safe handoff: read it first every session.
+Rewritten 2026-07-25 (updated same day: cliff RESOLVED/retracted, brief corrected,
+efficiency + instrumentation + demo-system are the forward path). Read it first every session.
 
 ## What this is
 
@@ -55,43 +56,56 @@ caps (`--cap-small/-medium/-large`, the cache-defeat knob).
    match-packed same-size text take identical time on Themis (~1.4 MB/s/conn); FPGA
    matcher adds ~nothing. ~1 MB bodies 413 on both (shared edge cap).
 
-### ⚠️ RULE-COUNT "CLIFF" — MEASURED BUT NOT ROBUSTLY REPRODUCIBLE (integrity-critical)
+### ✅ RULE-COUNT "CLIFF" — RESOLVED: IT WAS A TRANSIENT, RETRACTED (2026-07-25)
 
-- `rulecount-live.sh` (fixed small payload, conc 256, vary rule count; default corpus
-  distribution, 15000 records, cap-small 4000): Aergia flat ~26k through 6k rules,
-  **collapses to ~8.4k at 8k** (3 reps, <1% spread); Themis flat ~28k. Reported as
-  **3.4× at 8k** in `docs/DP4-THROUGHPUT-BRIEF.md` — **which Jamie converted to PDF and
-  shared externally.**
-- **BUT `density-real-live.sh` (same generator, same 8k rules, forced small size +
-  single match bucket, 12000 records, cap-small 12000) gives Aergia ~25–27k at 8k across
-  light/moderate/heavy density — NO cliff.** Same engine + rule count, two real-data
-  configs → **3× different Aergia result. The cliff does not reproduce across setups.**
-- **DO NOT keep asserting the 3.4× cliff until the trigger is pinned.** Tell Jamie it
-  needs qualification. Leading hypothesis (vindicates the founder's matches/KB point):
-  the rulecount corpus used the DEFAULT match_distribution, which puts *heavy* match
-  counts (up to 100) into *tiny* 512-byte docs = **~50–200 matches/KB (extreme)**, while
-  density-real "heavy" only reached ~12/KB. So the cliff may require EXTREME density that
-  the capped tests didn't hit. UNCONFIRMED.
-- **NEXT TEST (do first):** push density-real to extreme (30/50/100 matches/KB) on real
-  data at 8k rules; also compute actual matches/KB of the rulecount 8k small docs (the
-  matches/KB label had a cosmetic bug — recompute from `generated/manifest.json`:
-  `expected_total_matches/(payload_bytes_total/1024)`). Reconcile the two setups. If the
-  cliff only appears at extreme density, say so precisely; if it can't be reproduced,
-  retract/qualify the 3.4×.
+- The original `rulecount-live.sh` run reported Aergia **8.4k at 8k rules (3.4× cliff)**
+  and that number went into `docs/DP4-THROUGHPUT-BRIEF.md`, which Jamie shared externally.
+- **It does not reproduce.** Re-ran the *identical* rulecount 8k cell (same seed=42 corpus,
+  same flags, same host): Aergia **26.36k / 26.42k**, Themis ~28.7k. Then a full clean
+  1k→8k sweep (3 reps, <1% spread): **BOTH engines dead flat** — Themis ~28.6k, Aergia
+  ~26.3k, steady **1.09×** at every rule count. No cliff, and no gradual slope either.
+- **Root cause:** the 8.4k was a **transient depression of the shared host**; the 3 reps
+  agreed only because they ran back-to-back inside the same bad window. Density was NOT
+  the trigger — measured the rulecount 8k small-band at **4.8 matches/KB** (join
+  `input.jsonl.message` size ⋈ `expected.jsonl.expected_match_count`), LOWER than the
+  density-real runs. Founder's matches/KB mechanism is real in principle but not what
+  produced this number.
+- **Brief is CORRECTED** (rewritten 2026-07-25): visible Correction Notice retracting the
+  3.4×, honest flat table, latency corrected (p99 ~16 vs ~19ms, ~15% tighter, not "half"),
+  large-ceiling caveated, pivots positioning to EFFICIENCY (unmeasured) + predictability.
+- **Falsified hypotheses (all dead):** the 3.4× cliff; "RE2 slopes down with rule count";
+  "rule count is the FPGA's advantage axis." Deploy ceiling ~8k–10k (10k refused) means
+  >8k is UNTESTABLE (policy won't load), not "flat forever."
 
 ### Other density findings (context)
 
-Synthetic-filler sweeps (`make-dense-corpus.py`+`density-live.sh`) did NOT reproduce the
-cliff — but that filler was low-entropy ("same sentence", a mistake) and capped ~12/KB;
-superseded by the real-data approach. Deploy ceiling ~8k–10k rules (10k refused). 32k
-gen refused (ISSUE-004 containment).
+`density-real-live.sh` (light/mod/heavy) and `density-live.sh` (density×diversity) both
+gave Aergia 22–27k at 8k — all consistent with the corrected ~26k, all disagree with the
+retracted 8.4k. Synthetic filler was low-entropy ("same sentence", a mistake); superseded.
+32k gen refused (ISSUE-004 containment).
 
-### INTEGRITY NOTE (preserve)
+### THE REAL STORY IS EFFICIENCY (unmeasured) + instrumentation direction
 
-- **The numbers Jamie shared (brief PDF) are from the REAL YAML generator, NOT filler.**
-  Filler was only in internal unshared diagnostics. Confirmed.
-- The brief's *mechanism* paragraph ("cache cliff") is a HYPOTHESIS. AND now the cliff
-  *number itself* is in question (see above). Both need fixing in the brief once resolved.
+- At req/s level the engines are CLOSE (FPGA ~1.09× small, parity medium). The FPGA's
+  decisive win is expected to be **cores/power/cost per unit throughput** — NOT yet
+  measured. This is the founder's cores ask and now the #1 priority.
+- **GATE:** efficiency lives on the *engine* host. Themis FPGA = black box. Aergia (our
+  RE2) CPU story needs monitoring/exec access on whatever host runs the RE2 process
+  (engines sit behind argus edge, NOT on the driver EC2). **Confirm Aergia-host access.**
+- **Network finding (driver host m7a.2xlarge):** ENA `bw_out_allowance_exceeded` is LARGE
+  and non-zero — EC2 has been throttling our EGRESS. Reframes the ~150 MB/s large-payload
+  ceiling (may be our host's cloud cap, not the engine) and the 380 MB/s push (need
+  MULTI-host, one host can't beat a per-host cap). `ss -tim`/`nstat`/`ethtool -S $NIC`.
+- **PMU boundary:** virtualized (not .metal) → core `cpu` PMU present (perf cache-misses/
+  IPC works → can settle cache-cliff on Aergia) but NO `uncore_imc` (no true DRAM bytes/s
+  membw). PSI (`/proc/pressure/*`) is the always-works stall proxy.
+- **Instrumentation plan:** Prometheus + node_exporter + Grafana, out-of-band host CPU/net
+  (~0 request overhead) → the "software pegs N cores vs FPGA idle" panel = efficiency proof
+  AND live demo asset AND host-health canary that would've caught the 8.4k. Skip Elastic.
+  Keep driver lean; NO per-request tracing in the hot path (corrupts the number at 28k rps).
+- **Metrics gaps to add:** per-cell rep-variance + canary guard; correctness-under-load
+  (sample 1% vs oracle during load); soak (minutes) for drift; error taxonomy; per-cell
+  backpressure (ENA delta / ss / nstat).
 
 ## Tooling (datapoint4/)
 
@@ -106,14 +120,24 @@ data — right approach; has a cosmetic empty-matches/KB-label bug) · `watch-lo
 
 ## Next steps (in order, post-compaction)
 
-1. **Resolve the cliff (integrity first):** extreme-density real-data test + recompute
-   actual matches/KB of both setups; reconcile or qualify the 3.4×. Fix `make-dense-corpus`
-   density label / `density-real-live.sh` manifest-key bug while at it.
-2. **Redo CPU microbench on REAL dense docs** (not the sparse sample) — cores-per-GB.
-3. **Build ONE full narrative report** (like DP2/DP3) on sound data; then correct the
-   brief's cliff number + mechanism wording to match what's proven.
-4. **380 MB/s bandwidth push** (founder ask, queued): parallel drivers on large payloads
-   → is the byte ceiling one driver or the edge? Feeds `THROUGHPUT-ISOLATION-REQUEST.md`.
+Cliff is RESOLVED and brief is CORRECTED (see above). Remaining, in priority:
+
+1. **Confirm Aergia-host access**, then capture **cores-per-throughput** (efficiency —
+   the number the whole story now hinges on; founder's ask). Themis stays a black box.
+2. **Settle the large-payload ceiling:** snapshot ENA `bw_out_allowance_exceeded` delta
+   around large-payload cells — separate "engine limit" from "our EC2 egress cap." Feeds
+   `THROUGHPUT-ISOLATION-REQUEST.md` and reframes the 380 MB/s push (likely multi-host).
+3. **Stand up Prometheus + node_exporter + Grafana** (out-of-band host CPU/net) — the
+   efficiency panel doubles as a demo asset + host-health canary.
+4. **BUILD THE DEMO SYSTEM** (the real deliverable — Jamie's explicit reminder). SA-runnable
+   end-to-end env; the Grafana panel is part of it. Stop rabbit-holing on benchmarking once
+   the efficiency number is in hand. See demo memories (SA-runnable, positioning, assets).
+5. **REPO CLEANUP** (after testing): keep needed + reusable one-off scripts (probe-*,
+   density-*, reproduce, watch-load, rulecount-*), remove cruft, organize. Note made.
+
+**Known small bug:** density scripts reference `generated/manifest.json`; actual file is
+`generated/generation-manifest.json` (that's why matches/KB labels printed empty). Per-doc
+density = join `input.jsonl.message` byte-len ⋈ `expected.jsonl.expected_match_count`.
 
 ## Backlog
 
