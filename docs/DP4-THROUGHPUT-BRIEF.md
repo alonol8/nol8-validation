@@ -59,12 +59,13 @@ What holds up:
    because part of it may be a **cloud network throttle on our test host**, not the
    engines (see Open Questions).
 
-**Where the real story is — and what we haven't measured yet:** at the pure
-request-rate level, in this rig, the two engines are *close*. The FPGA's decisive
-advantage is expected to be **efficiency** — doing that same work at a fraction of
-the CPU, power, and cost, because the matching runs in silicon instead of burning
-general-purpose cores. **We have not yet measured that**, and it is now our top
-priority. See "What we're measuring next."
+**Where the real story is — and now we've measured it:** at the pure request-rate
+level, in this rig, the two engines are *close*. The FPGA's decisive advantage is
+**efficiency** — doing that same work at a fraction of the CPU. Measured on the
+engine hosts: **the software engine burns ~8 dedicated CPU cores on the matching
+that the FPGA does in silicon** — roughly **half the host CPU per request** for the
+same result. That is the win, and it is now measured, not asserted. See "The
+efficiency result."
 
 ---
 
@@ -172,17 +173,44 @@ headline. The defensible FPGA story rests on two things:
   move. Software's *throughput* was also flat here, but a fixed hardware pipeline
   has no cache, no garbage collection, and no per-rule cost to fall victim to as
   conditions get harsher. You provision against a flat line.
-- **Efficiency — the thesis we still owe a number.** The likely real advantage is
-  not "more requests" but "the *same* requests at a fraction of the cost": if the
-  software engine is burning most of a multi-core host to hit 26,000 req/s while
-  the FPGA offloads that work to silicon, the story becomes **cores, power, and
-  dollars saved**, not raw speed. **We have not measured this yet.** It is the
-  single most important thing to capture next, and everything below is aimed at it.
+- **Efficiency — the thesis, now with a number.** The real advantage is not "more
+  requests" but "the *same* requests at a fraction of the cost." Measured directly
+  on the engine hosts (see next section): the software engine spends **~8 dedicated
+  CPU cores** on the matching that the FPGA does in silicon — **~1.9× the host CPU
+  per request**. At fleet scale that is the **cores, power, and dollars** line, and
+  it is where the hardware earns its keep.
 
 **We are not going to oversell the request-rate numbers.** On small policies and
 light load the two engines are close, and we say so. The hardware's case is
-predictability and efficiency at enterprise scale — and efficiency is the part we
-now need to prove with a real measurement.
+predictability and efficiency at enterprise scale — and we have now measured the
+efficiency part directly.
+
+---
+
+## The efficiency result (measured on the engine hosts)
+
+We got onto both engine hosts and measured the CPU each engine's data plane
+actually consumes. Both run the *same* front-end data plane (Apollo), so it
+subtracts out cleanly and the comparison is fair:
+
+| Engine | Data plane (Apollo) | Matching | **Total host cores** | Throughput |
+|---|---|---|---|---|
+| **Themis** (FPGA) | ~11.3 cores | **FPGA silicon — 0 host cores** | **~11.3** | ~28,600 req/s |
+| **Aergia** (RE2 software) | ~11.3 cores | **~8.2 CPU cores (RE2 lexers)** | **~19.4** | ~26,300 req/s |
+
+- **The software tax the FPGA eliminates is ~8 dedicated CPU cores.** That is the
+  matching work, moved from general-purpose cores into silicon.
+- **Cores per 1,000 req/s: ~0.39 (FPGA) vs ~0.74 (software) → ~1.9×.** The software
+  path costs nearly double the host CPU for the same result.
+- **It's a standing cost, not a spike.** Both data planes are DPDK *poll-mode*, so
+  those cores are consumed **continuously — whether or not traffic is flowing.** The
+  software matcher burns its ~8 cores 24/7; the FPGA hands them back for other work.
+- **Verified real:** the FPGA is genuinely doing the matching (loaded FPGA image on
+  an AWS F2 instance; correct output confirmed by DP1–DP3), not a software fallback.
+
+This is the honest headline: on raw speed the engines are close, but the FPGA does
+the same job at roughly **half the host CPU per request** — the cores/power/cost
+advantage that scales with a fleet.
 
 ---
 
@@ -199,13 +227,12 @@ now need to prove with a real measurement.
   question until we measure it directly. This also reframes a planned "push to
   380 MB/s" test: if the limit is a per-host cloud cap, more load on one host can't
   break it — we'd need multiple hosts.
-- **Efficiency is unmeasured** because it lives on the engine host, not our driver
-  host. Getting "cores burned per unit throughput" needs monitoring access on the
-  **software engine's** host. The FPGA appliance is a black box we don't own;
-  confirming access to the software engine's host is the gate on the whole
-  efficiency story (and the founder's explicit ask for cores-per-throughput).
 - **Beyond ~8,000 rules is untestable today** — the engine won't accept a larger
   policy (a deployment cap, not a speed result).
+- **Does the ~8-lexer count set Aergia's ceiling?** A coherent, testable hypothesis
+  (unlike the retracted cliff): Aergia's ~26k plateau may be the 8 RE2 lexers
+  saturating — more lexers would buy more req/s but more cores, while the FPGA isn't
+  lexer-bound. Falsifiable by varying `--num-lexers`; not yet run.
 
 ---
 
@@ -214,10 +241,9 @@ now need to prove with a real measurement.
 The 8,400 artifact taught us that our instrumentation had blind spots. Here's what
 we're adding, in priority order.
 
-**1. Server-side CPU / cores-per-throughput — the biggest gap and the efficiency
-story.** We measure requests/second at the client; we do *not* yet measure what
-that costs the engine host in CPU. Without it, "the FPGA is more efficient" is an
-assertion. This is the top priority (gated on engine-host access, above).
+**1. Server-side CPU / cores-per-throughput — DONE (see "The efficiency result").**
+Measured directly on the engine hosts: ~8-core software tax, ~1.9× host CPU per
+request. This was the biggest gap; it is now closed.
 
 **2. A permanent guard against the class of error we just hit.** Two cheap
 additions: (a) report the *spread* across repeats for every data point and
@@ -237,38 +263,37 @@ not seconds) to catch slow drift — thermal, memory growth, software GC pauses 
 that a 15-second run misses. And an error *taxonomy* (timeout vs 5xx vs rejected)
 instead of a bare count.
 
-**How we'll see it — and demo it.** We plan to stand up lightweight,
-industry-standard monitoring (Prometheus + Grafana) that reads host CPU/network
-**out-of-band** — it never touches the request path, so it adds no measurement
-overhead. Done right, the single panel *"software pegs N cores to hit 26k req/s
-while the FPGA host sits near-idle at the same rate"* is both our efficiency proof
-**and** a live demo visual. We will **not** put per-request tracing in the load
-path — at 28,000 req/s that would corrupt the very numbers we're protecting;
-tracing, if ever needed, runs in a separate low-rate diagnostic pass.
+**How we capture and show it — self-contained, no heavyweight stack.** We measure
+engine-host CPU directly with lightweight on-box sampling (`/proc`, over SSH) and
+render the contrast from data *we* capture — no Prometheus/Grafana dependency to
+stand up, keep running, or pay for. The demo (`demos/showcase/efficiency-demo.sh`)
+does exactly this live: *"the software engine is burning ~8 cores right now, serving
+nothing; the FPGA does that in silicon."* We deliberately keep the load driver lean
+and put **no per-request tracing** in the hot path — at ~28,000 req/s that would
+corrupt the very numbers we're protecting.
 
 ---
 
 ## Next steps
 
-1. **Confirm monitoring access on the software engine's host**, then capture
-   **cores-per-throughput** — the efficiency number the whole story now hinges on.
-2. **Settle the large-payload ceiling** — measure the cloud bandwidth-throttle
+1. **~~Capture cores-per-throughput~~ — DONE** (the efficiency result above).
+2. **~~Build the customer-facing demo system~~ — DONE.** A self-contained,
+   SA-runnable demo lives in `demos/showcase/` (live `/v1/process` redaction,
+   oracle-verified, plus the efficiency contrast). See its `RUNBOOK.md`.
+3. **Settle the large-payload ceiling** — measure the cloud bandwidth-throttle
    delta directly; separate "engine limit" from "our host's cloud cap."
-3. **Stand up the Prometheus + Grafana panel** — doubles as instrumentation and as
-   a demo asset.
-4. **Build the customer-facing demo system.** The benchmarking has done its job of
-   telling us what's true; the deliverable is an environment a solutions architect
-   can run live. That's the priority once the efficiency number is in hand.
+4. **(Optional) Test the lexer-count hypothesis** — vary `--num-lexers` to confirm
+   whether Aergia's ~26k plateau is lexer-bound.
 
 ---
 
 ## One-line summary for a slide
 
 > *On raw speed the FPGA and the software engine are close — the FPGA a steady ~9%
-> ahead on small messages and flat as the policy grows. The hardware's real case is
-> predictability and efficiency at scale — doing the same work at a fraction of the
-> CPU — which we're now instrumenting to prove. (An earlier "3.4× cliff" figure was
-> a measurement artifact and has been retracted.)*
+> ahead on small messages and flat as the policy grows. The hardware's real win is
+> efficiency: it does the same, correct, verifiable job at **~half the host CPU per
+> request** — the software matcher burns ~8 CPU cores that the FPGA does in silicon.
+> (An earlier "3.4× cliff" figure was a measurement artifact and has been retracted.)*
 
 ---
 
@@ -291,6 +316,11 @@ tracing, if ever needed, runs in a separate low-rate diagnostic pass.
   1,000 through 8,000 rules — no cliff, no slope**; FPGA flat at ~28,600 req/s
   throughout. Deployment ceiling observed between 8,000 and 10,000 rules (10,000
   refused), so the range above 8,000 is untestable today.
+- **Efficiency (measured on the engine hosts):** Themis ~11.3 total host cores
+  (Apollo data plane; FPGA does matching in silicon, 0 host cores); Aergia ~19.4
+  (~11.3 Apollo + ~8.2 RE2 lexer cores). **~8-core software tax; ~0.39 vs ~0.74
+  cores per 1k req/s → ~1.9× host CPU per request.** Both poll-mode, so consumed
+  continuously. FPGA verified engaged (loaded AFI on f2.6xlarge; DP1–DP3 correct).
 - **Retracted:** the earlier "~8,400 req/s / 3.4× at 8,000 rules" figure — a
   transient shared-host artifact that did not reproduce.
 

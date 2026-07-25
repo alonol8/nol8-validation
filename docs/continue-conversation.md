@@ -1,7 +1,8 @@
 # Continue conversation — NOL8 validation / demos
 
-Rewritten 2026-07-25 (updated same day: cliff RESOLVED/retracted, brief corrected,
-efficiency + instrumentation + demo-system are the forward path). Read it first every session.
+Rewritten 2026-07-25 (updated same day: cliff RESOLVED/retracted + brief corrected;
+efficiency MEASURED (~8-core software tax); demo system BUILT in `demos/showcase/`).
+Read it first every session.
 
 ## What this is
 
@@ -84,28 +85,48 @@ gave Aergia 22–27k at 8k — all consistent with the corrected ~26k, all disag
 retracted 8.4k. Synthetic filler was low-entropy ("same sentence", a mistake); superseded.
 32k gen refused (ISSUE-004 containment).
 
-### THE REAL STORY IS EFFICIENCY (unmeasured) + instrumentation direction
+### ✅ THE REAL STORY IS EFFICIENCY — MEASURED (2026-07-25)
 
-- At req/s level the engines are CLOSE (FPGA ~1.09× small, parity medium). The FPGA's
-  decisive win is expected to be **cores/power/cost per unit throughput** — NOT yet
-  measured. This is the founder's cores ask and now the #1 priority.
-- **GATE:** efficiency lives on the *engine* host. Themis FPGA = black box. Aergia (our
-  RE2) CPU story needs monitoring/exec access on whatever host runs the RE2 process
-  (engines sit behind argus edge, NOT on the driver EC2). **Confirm Aergia-host access.**
-- **Network finding (driver host m7a.2xlarge):** ENA `bw_out_allowance_exceeded` is LARGE
-  and non-zero — EC2 has been throttling our EGRESS. Reframes the ~150 MB/s large-payload
-  ceiling (may be our host's cloud cap, not the engine) and the 380 MB/s push (need
-  MULTI-host, one host can't beat a per-host cap). `ss -tim`/`nstat`/`ethtool -S $NIC`.
-- **PMU boundary:** virtualized (not .metal) → core `cpu` PMU present (perf cache-misses/
-  IPC works → can settle cache-cliff on Aergia) but NO `uncore_imc` (no true DRAM bytes/s
-  membw). PSI (`/proc/pressure/*`) is the always-works stall proxy.
-- **Instrumentation plan:** Prometheus + node_exporter + Grafana, out-of-band host CPU/net
-  (~0 request overhead) → the "software pegs N cores vs FPGA idle" panel = efficiency proof
-  AND live demo asset AND host-health canary that would've caught the 8.4k. Skip Elastic.
-  Keep driver lean; NO per-request tracing in the hot path (corrupts the number at 28k rps).
-- **Metrics gaps to add:** per-cell rep-variance + canary guard; correctness-under-load
-  (sample 1% vs oracle during load); soak (minutes) for drift; error taxonomy; per-cell
-  backpressure (ENA delta / ss / nstat).
+- **Measured on the engine hosts** (SSH `themis-demo` = FPGA box ip-10-10-1-254
+  f2.6xlarge 24c; `aergia-demo` = RE2 box 32c; both `pground`, my key works there —
+  NOT on hydra). Both engines share the **Apollo** DPDK poll-mode data plane, so it
+  subtracts out fairly:
+  - **Themis:** Apollo ~11.3 cores + FPGA matching in silicon (**0 host cores**, no
+    matcher proc) = **~11.3 total** → ~28,600 rps. FPGA verified: AFI
+    `agfi-057af19e...` loaded/OK, `/dev/uio0`, apollo `-l 2-13` regexdev; DP1-3 correct.
+  - **Aergia:** Apollo ~11.3 + **aergia.real `--num-lexers 8` = ~8.2 RE2 lexer cores**
+    = **~19.4 total** → ~26,300 rps.
+  - **Software tax ~8 cores; ~0.39 vs ~0.74 cores/krps → ~1.9× host CPU/request.**
+    Poll-mode = cores burn continuously (idle == load; measured at rest is representative).
+- **Coherent testable hypothesis:** Aergia's ~26k plateau may be the 8-lexer saturation
+  (FPGA isn't lexer-bound → 28.6k). Falsifiable via `--num-lexers`. Not run.
+- **Topology:** Argus SaaS edge (tenant001-v1demo.nol8.net :443/:444) → Iris QUIC :8443 →
+  Apollo → backend (FPGA regexdev on themis / RE2 lexers on aergia). `nolctl backend set`
+  (IaC) flips Apollo's backend. policyd :8444 control. 1MB request cap is a product limit.
+
+### Instrumentation = SELF-CONTAINED (no Grafana — user steer)
+
+- **Hydra (`hydra-obs`, `:8088` custom "orchestrator" Basic-auth) is NOT a dependency.**
+  It hosts the eng team's (turned-OFF, expensive) load-gen + a Grafana OBS the user
+  dislikes/may have offline; my SSH key isn't even authorized there. See memory
+  [[avoid-hydra-grafana-dependency]]. Use our own on-box `/proc` sampling + the Go driver.
+- **Network finding (driver host m7a.2xlarge):** ENA `bw_out_allowance_exceeded` LARGE —
+  EC2 throttles our EGRESS. Reframes the ~150 MB/s ceiling (may be our cloud cap) + the
+  380 MB/s push (need MULTI-host). PMU: core `cpu` present (perf works), no `uncore_imc`.
+- **Metrics gaps still worth adding:** per-cell rep-variance + canary guard; correctness-
+  under-load (sample 1% vs oracle); soak; error taxonomy; ENA-delta per large cell.
+
+### ✅ DEMO SYSTEM BUILT — `demos/showcase/` (SA-runnable, self-contained)
+
+- **Act 1 `redact-demo.sh` + `redact-demo.py`** (run on `nol8-demo`): deploys
+  `demos/policies/starter-known-values.nol`, sends `sample-message.txt` through
+  `/v1/process`, prints BEFORE/AFTER/ORACLE. Oracle derived from the policy file
+  (for each governed value in input: assert raw gone + token present). **Tested live:
+  6/6 redacted & verified on Themis.** `ENGINE=aergia` shows identical output (parity).
+- **Act 2 `efficiency-demo.sh`** (run on laptop; SSHes themis-demo+aergia-demo): samples
+  on-box cores, prints the ~8-core tax / ~1.9× contrast. **Tested: 11.3 vs 19.4 cores.**
+- `RUNBOOK.md` (two acts, two-host, copy-paste, what-to-say) + `README.md`.
+- Story: same customer-verifiable result from FPGA & software, at ~half the host CPU/req.
 
 ## Tooling (datapoint4/)
 
@@ -120,20 +141,19 @@ data — right approach; has a cosmetic empty-matches/KB-label bug) · `watch-lo
 
 ## Next steps (in order, post-compaction)
 
-Cliff is RESOLVED and brief is CORRECTED (see above). Remaining, in priority:
+Cliff RESOLVED + brief CORRECTED; efficiency MEASURED; demo system BUILT (all above).
+Remaining, in priority:
 
-1. **Confirm Aergia-host access**, then capture **cores-per-throughput** (efficiency —
-   the number the whole story now hinges on; founder's ask). Themis stays a black box.
+1. **REPO CLEANUP** (Jamie asked, do after testing): keep needed + reusable one-off scripts
+   (probe-*, density-*, reproduce, watch-load, rulecount-*), remove cruft, organize. The new
+   `demos/showcase/` is the keeper demo. Announce before git.
 2. **Settle the large-payload ceiling:** snapshot ENA `bw_out_allowance_exceeded` delta
    around large-payload cells — separate "engine limit" from "our EC2 egress cap." Feeds
    `THROUGHPUT-ISOLATION-REQUEST.md` and reframes the 380 MB/s push (likely multi-host).
-3. **Stand up Prometheus + node_exporter + Grafana** (out-of-band host CPU/net) — the
-   efficiency panel doubles as a demo asset + host-health canary.
-4. **BUILD THE DEMO SYSTEM** (the real deliverable — Jamie's explicit reminder). SA-runnable
-   end-to-end env; the Grafana panel is part of it. Stop rabbit-holing on benchmarking once
-   the efficiency number is in hand. See demo memories (SA-runnable, positioning, assets).
-5. **REPO CLEANUP** (after testing): keep needed + reusable one-off scripts (probe-*,
-   density-*, reproduce, watch-load, rulecount-*), remove cruft, organize. Note made.
+3. **(Optional) lexer-count test:** vary `--num-lexers` on aergia to confirm the ~26k
+   plateau is lexer-bound.
+4. **Metrics guards** (nice-to-have): per-cell rep-variance + host-health canary (would've
+   caught the 8.4k); correctness-under-load sampling.
 
 **Known small bug:** density scripts reference `generated/manifest.json`; actual file is
 `generated/generation-manifest.json` (that's why matches/KB labels printed empty). Per-doc

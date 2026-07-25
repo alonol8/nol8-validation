@@ -1,0 +1,10 @@
+SOC ALERT #4471 — priority HIGH
+
+Customer Northwind Trading reported fraudulent activity on payment card
+4111 1111 1111 1111 during the overnight settlement window. The originating
+traffic was traced to 203.0.113.45, an address previously linked to
+Red Flag Logistics. The affected internal account is ACC-7701-4432.
+
+Analyst note: cross-reference the transaction against project Aurora Ledger
+before escalating to the settlement team. Do not forward this ticket outside
+the fraud desk.
