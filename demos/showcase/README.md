@@ -6,7 +6,8 @@ load generator, no cloud dashboard; just the live engines and two scripts.
 
 | File | What it is |
 |---|---|
-| `RUNBOOK.md` | The SA guide — two acts, where to run each, expected output, talk track. |
+| `RUNBOOK.md` | The SA guide — the visual console + the CLI tour, where to run each, talk track. |
+| `console/` | **Live web console** (on-brand, dark). `bash console/run.sh` on `nol8-demo`, tunnel `-L 8770`, open a browser. Drives `/v1/process` live + shows the efficiency contrast. |
 | `usecases-demo.sh` | **Act 1** — the three use cases (pre-embedding / pre-post-inference / agent-to-agent) through `/v1/process`, each oracle-verified. Run on `nol8-demo`. |
 | `scenarios/*.txt` | One realistic message per use case (real governed values, so the oracle verifies). |
 | `redact-demo.sh` / `redact-demo.py` | Single-message variant of Act 1 — point it at any file with `MSG_FILE=`. Oracle + line-wrap near-miss warning built in. |

@@ -36,6 +36,39 @@ facing version of all three.
 
 ---
 
+## Two ways to run it
+
+- **The visual console** (below) — a live, on-brand web UI. Best for a customer room.
+- **The CLI tour** (Acts 1–2 further down) — same engine calls, terminal output.
+  Best for a quick headless check or when you can't open a browser.
+
+---
+
+## The visual console (recommended for live demos)
+
+A dark, on-brand NOL8 web console that drives `/v1/process` live: pick a use case
+and engine, send a message, watch the redaction resolve with the governed values
+highlighted, see the oracle verdict + match density, and the CPU-cost contrast
+beside it. Dependency-free (Python stdlib), no Grafana, one file you can read.
+
+```bash
+# 1) on the box that reaches the engines
+ssh nol8-demo
+cd /opt/nol8/nol8-validation
+bash demos/showcase/console/run.sh          # deploys the policy, serves on :8770 (stays foreground)
+
+# 2) from your laptop, tunnel + open a browser
+ssh -L 8770:localhost:8770 nol8-demo
+open http://localhost:8770
+```
+
+In the console: choose **Pre-embedding / Pre-post-inference / Agent-to-agent** (or
+edit your own message), toggle **Themis (FPGA)** vs **Aergia (RE2 software)**, hit
+**Process**. Both engines return identical, oracle-verified output; the efficiency
+panel shows the ~8-core software tax the FPGA offloads. `Ctrl-C` on `nol8-demo` stops it.
+
+---
+
 ## Act 1 — The three use cases through `/v1/process`  (run on `nol8-demo`)
 
 The customer-facing surface is a single synchronous HTTPS call — no SDK, no agent,
