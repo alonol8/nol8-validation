@@ -13,7 +13,9 @@ from __future__ import annotations
 
 import csv
 import importlib.util
+import statistics
 import sys
+from collections import defaultdict
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -26,18 +28,29 @@ ENGINE = {"themis": ("Themis (FPGA)", "var(--accent)"),
 
 
 def load(csv_path: Path):
-    rows = []
+    """Load rows, collapsing repeats (rep column, if present) to the MEDIAN per
+    (rule_count, engine) so transient shared-host noise doesn't move the line."""
+    raw = defaultdict(lambda: defaultdict(list))
+    meta = {}
     for r in csv.DictReader(csv_path.open()):
+        key = (int(r["rule_count"]), r["engine"])
+        for k in ("rps", "p99_ms", "throughput_mib_s", "p50_ms"):
+            raw[key][k].append(float(r[k]))
+        raw[key]["errors"].append(int(r["errors"]))
+        meta[key] = {"payload": r["payload"], "concurrency": int(r["concurrency"])}
+    rows = []
+    for (rc, eng), vals in raw.items():
         rows.append({
-            "rule_count": int(r["rule_count"]),
-            "engine": r["engine"],
-            "payload": r["payload"],
-            "concurrency": int(r["concurrency"]),
-            "rps": float(r["rps"]),
-            "p99_ms": float(r["p99_ms"]),
-            "mib_s": float(r["throughput_mib_s"]),
-            "p50_ms": float(r["p50_ms"]),
-            "errors": int(r["errors"]),
+            "rule_count": rc,
+            "engine": eng,
+            "payload": meta[(rc, eng)]["payload"],
+            "concurrency": meta[(rc, eng)]["concurrency"],
+            "rps": statistics.median(vals["rps"]),
+            "p99_ms": statistics.median(vals["p99_ms"]),
+            "mib_s": statistics.median(vals["throughput_mib_s"]),
+            "p50_ms": statistics.median(vals["p50_ms"]),
+            "errors": max(vals["errors"]),
+            "reps": len(vals["rps"]),
         })
     return rows
 

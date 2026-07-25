@@ -25,7 +25,11 @@ PACK="demos/benchmark/datapoint4"
 RESULTS="${DP4_RESULTS:-$ROOT/$PACK/results}"
 mkdir -p "$RESULTS"
 
-RULE_COUNTS="${DP4_RULE_COUNTS:-1000 2000 4000 8000 16000 32000}"
+# Denser points under the ~16k deploy ceiling; a huge count that fails to deploy
+# or generate just skips. REPS re-drives the SAME corpus so we can median out
+# transient shared-host noise without regenerating.
+RULE_COUNTS="${DP4_RULE_COUNTS:-1000 2000 4000 6000 8000 10000 12000}"
+REPS="${DP4_RC_REPS:-3}"
 RECORDS="${DP4_RC_RECORDS:-15000}"    # ~40% small band -> >=4,000 distinct small bodies
 CONC="${DP4_RC_CONC:-256}"            # fixed, near Themis small peak and well-parallelized
 PAYLOAD="${DP4_RC_PAYLOAD:-small}"
@@ -58,15 +62,18 @@ for R in $RULE_COUNTS; do
   fi
   sleep 6
   for engine in themis aergia; do
-    "$RESULTS/dp4driver" \
-      --engine "$engine" --label "$engine" --input "$INPUT" \
-      --concurrency "$CONC" --payloads "$PAYLOAD" \
-      --warmup "$WARMUP" --duration "$DURATION" \
-      --cap-small 4000 --cap-medium 4000 --cap-large 4000 \
-      --output "$RESULTS/rc_${engine}.csv" | sed 's/^/   /'
-    [ -f "$RESULTS/rc_${engine}.csv" ] || continue
-    if [ ! -f "$OUT" ]; then echo "rule_count,$(head -1 "$RESULTS/rc_${engine}.csv")" > "$OUT"; fi
-    tail -n +2 "$RESULTS/rc_${engine}.csv" | sed "s/^/$R,/" >> "$OUT"
+    for rep in $(seq 1 "$REPS"); do
+      echo "   -- $engine rule_count=$R rep $rep/$REPS"
+      "$RESULTS/dp4driver" \
+        --engine "$engine" --label "$engine" --input "$INPUT" \
+        --concurrency "$CONC" --payloads "$PAYLOAD" \
+        --warmup "$WARMUP" --duration "$DURATION" \
+        --cap-small 4000 --cap-medium 4000 --cap-large 4000 \
+        --output "$RESULTS/rc_${engine}.csv" | sed 's/^/      /'
+      [ -f "$RESULTS/rc_${engine}.csv" ] || continue
+      if [ ! -f "$OUT" ]; then echo "rule_count,rep,$(head -1 "$RESULTS/rc_${engine}.csv")" > "$OUT"; fi
+      tail -n +2 "$RESULTS/rc_${engine}.csv" | sed "s/^/$R,$rep,/" >> "$OUT"
+    done
   done
   echo ">> rule_count=$R done"
 done
