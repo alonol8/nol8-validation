@@ -145,7 +145,9 @@ question: does the FPGA's edge grow with policy size?
 **Both engines are flat across the whole range, and the FPGA holds a steady ~9%
 edge that does *not* widen with rule count.** The software engine does **not** slow
 down as rules grow — not at 8,000 rules, and not anywhere below it. Latency tracks
-the same story: FPGA 99th-percentile ~16 ms, software ~19 ms, both flat throughout.
+the same story: FPGA 99th-percentile ~16 ms, software ~19 ms, both flat throughout
+(these are **at 256 concurrency** — at concurrency 1 both are ~2 ms; see "Latency —
+what the ~19 ms P99 actually is").
 
 **This corrects the earlier brief on two points, not one:**
 1. There is no 3.4× cliff at 8,000 rules (retracted above).
@@ -211,6 +213,39 @@ subtracts out cleanly and the comparison is fair:
 This is the honest headline: on raw speed the engines are close, but the FPGA does
 the same job at roughly **half the host CPU per request** — the cores/power/cost
 advantage that scales with a fleet.
+
+---
+
+## Latency — what the "~19 ms P99" actually is (read before quoting it)
+
+The P99 latencies elsewhere in this brief are measured at **256 concurrent requests**.
+That number describes our *load profile*, **not** the engine's matching speed — and it
+must not be quoted bare. Dropping the concurrency shows why:
+
+| Concurrency | Throughput | P99 | Mean | Min |
+|---|---|---|---|---|
+| **1** | 566 req/s | **2.5 ms** | 1.8 | 1.0 |
+| 16 | 8,967 | 2.9 ms | 1.8 | 0.9 |
+| 64 | 23,755 | 5.9 ms | 2.7 | 1.0 |
+| 128 | 25,435 | 10.1 ms | 5.0 | 1.0 |
+| **256** | 26,323 | **19.3 ms** | 9.7 | 1.2 |
+
+*(software engine; small payloads. FPGA tracks the same shape, ~15% lower.)*
+
+- **At concurrency 1, a full redaction round-trip is ~2 ms P99 with a ~1 ms floor.**
+  That floor is network + Argus edge + Iris QUIC + Apollo + the engine; the **matching
+  itself is sub-millisecond**, inside the noise. Software matching is *not* 19 ms.
+- **Throughput saturates by ~64 concurrency (~24k req/s).** Past that, more load buys
+  no throughput — it only deepens the queue, so P99 climbs 5.9 → 10 → 19 ms while req/s
+  is flat. That is textbook closed-loop queuing, not an engine defect.
+- **Little's Law closes the loop to three decimals:** mean latency = concurrency ÷
+  throughput. 256 ÷ 26,323 = 9.73 ms → measured mean 9.728 ms; 128 ÷ 25,435 = 5.03 →
+  5.033; 64 ÷ 23,755 = 2.69 → 2.694. The latency is *fully* accounted for by queue depth
+  ÷ service rate — there is no unexplained slack for a hidden "software problem" to live in.
+
+**Takeaway:** the ~19 ms P99 is real and correct, but it is the cost of running 256
+requests in flight, not the cost of matching. Quote it as "P99 at 256 concurrency,"
+never as the engine's latency.
 
 ---
 
@@ -302,10 +337,12 @@ corrupt the very numbers we're protecting.
 - **Small-message throughput under load (median of 3, spread <1%):** FPGA
   ~28,600 req/s vs software ~26,300 req/s → **~1.09×**, steady from 1,000 to 8,000
   rules.
-- **Latency under load, small messages:** FPGA 99th-percentile ~16 ms vs software
-  ~19 ms (both flat across rule count) — the FPGA tail is tighter by ~15%, *not*
-  the "roughly half" the earlier brief claimed (that was based on the retracted
-  8,400 point).
+- **Latency under load, small messages (at 256 concurrency):** FPGA 99th-percentile
+  ~16 ms vs software ~19 ms (both flat across rule count) — the FPGA tail is tighter by
+  ~15%, *not* the "roughly half" the earlier brief claimed (that was based on the
+  retracted 8,400 point). **This is a 256-deep-queue number, not matching time** — at
+  concurrency 1 both engines are ~2 ms P99 with a ~1 ms floor; matching is sub-ms. See
+  the "Latency" section for the full concurrency curve + Little's Law check.
 - **Matching is free (single-request probe):** identical latency for zero-match vs
   match-packed text of the same size on the FPGA (512 KB: ≈373 ms either way).
 - **Big-payload ceiling:** both engines ~135–155 MB/s aggregate — **but the
