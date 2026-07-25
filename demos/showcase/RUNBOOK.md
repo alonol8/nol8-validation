@@ -64,10 +64,14 @@ bash demos/showcase/console/run.sh          # deploys the policy, serves on 0.0.
   (the box's VPC IP; the console binds all interfaces). Requires the security group to
   allow inbound TCP 8770 from your VPN CIDR — if the page hangs, that's the SG, not the
   server.
-- **SSH tunnel (always works, no SG change):** in a *separate* terminal run
-  `ssh -L 8770:localhost:8770 nol8-demo` and **leave that shell open** (the open shell
-  *is* the tunnel — don't type in it). Then browse to `http://localhost:8770` on your Mac.
-  Closing the shell closes the tunnel.
+- **SSH tunnel (always works, no SG change — recommended):** the blocked port doesn't
+  matter because this rides SSH (port 22). One-liner, background tunnel, nothing to
+  babysit:
+  ```bash
+  ssh -f -N -L 8770:localhost:8770 nol8-demo    # -f -N = runs quietly in the background
+  open http://localhost:8770                      # browse the console
+  # stop it later:  pkill -f '8770:localhost:8770'
+  ```
 
 (`CONSOLE_HOST=127.0.0.1 bash …/run.sh` restricts it to localhost / tunnel-only.)
 
