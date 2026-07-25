@@ -52,15 +52,24 @@ highlighted, see the oracle verdict + match density, and the CPU-cost contrast
 beside it. Dependency-free (Python stdlib), no Grafana, one file you can read.
 
 ```bash
-# 1) on the box that reaches the engines
+# 1) on the box that reaches the engines — leave this running (foreground)
 ssh nol8-demo
 cd /opt/nol8/nol8-validation
-bash demos/showcase/console/run.sh          # deploys the policy, serves on :8770 (stays foreground)
-
-# 2) from your laptop, tunnel + open a browser
-ssh -L 8770:localhost:8770 nol8-demo
-open http://localhost:8770
+bash demos/showcase/console/run.sh          # deploys the policy, serves on 0.0.0.0:8770
 ```
+
+**Then open it — two ways:**
+
+- **Direct over the VPN (simplest):** in your Mac browser go to `http://10.8.10.40:8770`
+  (the box's VPC IP; the console binds all interfaces). Requires the security group to
+  allow inbound TCP 8770 from your VPN CIDR — if the page hangs, that's the SG, not the
+  server.
+- **SSH tunnel (always works, no SG change):** in a *separate* terminal run
+  `ssh -L 8770:localhost:8770 nol8-demo` and **leave that shell open** (the open shell
+  *is* the tunnel — don't type in it). Then browse to `http://localhost:8770` on your Mac.
+  Closing the shell closes the tunnel.
+
+(`CONSOLE_HOST=127.0.0.1 bash …/run.sh` restricts it to localhost / tunnel-only.)
 
 In the console: choose **Pre-embedding / Pre-post-inference / Agent-to-agent** (or
 edit your own message), toggle **Themis (FPGA)** vs **Aergia (RE2 software)**, hit

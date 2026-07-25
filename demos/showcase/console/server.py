@@ -34,6 +34,22 @@ BRAND = ROOT / "demos" / "benchmark" / "brand"
 POLICY = ROOT / "demos" / "policies" / "starter-known-values.nol"
 SCEN = HERE.parent / "scenarios"
 PORT = int(os.environ.get("CONSOLE_PORT", "8770"))
+# Bind all interfaces by default so the console is reachable over the VPN
+# (http://<box-ip>:PORT). Set CONSOLE_HOST=127.0.0.1 to restrict to localhost
+# (then reach it only via an SSH tunnel).
+HOST = os.environ.get("CONSOLE_HOST", "0.0.0.0")
+
+
+def lan_ip() -> str:
+    import socket
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("10.255.255.255", 1))
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except Exception:  # noqa: BLE001
+        return "127.0.0.1"
 
 ENGINES = {
     "themis": {"label": "Themis · FPGA", "endpoint": os.environ.get("THEMIS_PROCESS_ENDPOINT", ""),
@@ -194,8 +210,11 @@ def main():
         print(f"!! missing endpoint(s) for {missing} — source config/demo.env + .env first", file=sys.stderr)
     print(f">> deploying known-values policy ({len(PAIRS)} rules) to both engines ...", flush=True)
     print(f"   {deploy_policy()}", flush=True)
-    print(f">> NOL8 demo console on http://127.0.0.1:{PORT}  (tunnel: ssh -L {PORT}:localhost:{PORT} nol8-demo)", flush=True)
-    ThreadingHTTPServer(("127.0.0.1", PORT), Handler).serve_forever()
+    ip = lan_ip()
+    print(f">> NOL8 demo console listening on {HOST}:{PORT}", flush=True)
+    print(f"   over the VPN:   http://{ip}:{PORT}", flush=True)
+    print(f"   or via tunnel:  ssh -L {PORT}:localhost:{PORT} nol8-demo   (leave open)  ->  http://localhost:{PORT}", flush=True)
+    ThreadingHTTPServer((HOST, PORT), Handler).serve_forever()
 
 
 if __name__ == "__main__":
