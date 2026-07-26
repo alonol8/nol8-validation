@@ -1,0 +1,3 @@
+Incident: possible exposure during the Project Meridian Vault migration window.
+Counterparty Volkov Shipping OJSC touched records linked to account MFN-44190-07.
+Open a case, notify the reviewer, and hold any downstream automation until cleared.

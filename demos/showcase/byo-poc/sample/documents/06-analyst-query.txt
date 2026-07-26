@@ -1,0 +1,4 @@
+Analyst query for the assistant: pull everything on Solstice Media Group, including the
+charge on card 6011 4478 9920 3357 and activity on account MFN-10924-88. Cross-reference
+counterparty Crimson Sands Trading and note any tie to Project Northwind Atlas, then draft
+the escalation summary.

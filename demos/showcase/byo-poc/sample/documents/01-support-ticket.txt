@@ -1,0 +1,4 @@
+Support ticket #4821 — priority high.
+Customer Halcyon Freight Ltd reports a declined transaction on card 4716 3502 8841 2290
+tied to account MFN-88213-01. They ask that we confirm the refund window and reissue.
+Please review before this text is indexed into the support knowledge base.

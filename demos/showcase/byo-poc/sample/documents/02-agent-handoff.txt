@@ -1,0 +1,4 @@
+[agent: onboarding -> agent: compliance]
+Run Irongate Logistics through enhanced due diligence before we book against Project Cobalt Harbor.
+Counterparty Grey Harbor Metals was flagged on the last screening pass.
+Reference account MFN-72651-33 for the existing relationship.

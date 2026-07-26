@@ -54,3 +54,5 @@ demos/benchmark/datapoint4/rulecount-report.html
 # configured (in .vscode/settings.json) to write them to handoff/.
 *.pdf
 handoff/
+# BYO-POC generated artifacts (policy + corpus built from customer input)
+demos/showcase/byo-poc/**/generated/
