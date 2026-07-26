@@ -105,6 +105,8 @@ different edge topology** (single Argus vs 10) — only ratios within one run su
 | `concpush-8k-themis-10argus.csv` | 10 edge, 8k rules, conc 256/512/1024 | Concurrency push, Themis. |
 | `concpush-8k-aergia-10argus.csv` | 10 edge, 8k rules, conc 256/512/1024 | Concurrency push, Aergia. |
 | `throughput_combined-fairrun.csv` | **single edge**, 4k rules, payload×conc | The original DP4 fair run. **Superseded for absolute throughput** (single-edge ceiling; large-payload row shows the disproven ~150 MB/s figure). Kept as the pre-10-edge baseline. |
+| `rulecount-2k4k-clean-20260726.csv` | 10 edge, conc 256, small, 5 reps | Clean re-run with the fixed harness (deploy probe, err/stall columns). Themis ~75.4k flat; Aergia ~58–60k. Rep-1 ratio 1.259× (2k) / 1.303× (4k); median 1.256× / 1.283×. Errors intermittent (0–10/cell), do not depress rps at this volume. Supersedes the provisional 2k/4k cells. |
+| `mediumlarge-10edge-20260726.csv` | 10 edge, conc 256, 4k rules, medium+large | Medium/large re-measured on the 10-node edge (rep-1). Near-parity: medium 1.07×, large 1.01×; both bandwidth-bound at ~300–320 MiB/s (disproves the ~150 MB/s cap). Large cells contaminated by 5xx stalls (Themis 43 err/122s, Aergia 139 err/221s) — read with the error/stall columns. |
 
 ---
 
