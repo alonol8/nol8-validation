@@ -5,7 +5,7 @@
 #   cd /opt/nol8/nol8-validation && bash demos/showcase/console/run.sh
 #
 # Then, from your laptop, tunnel and open a browser:
-#   ssh -L 8770:localhost:8770 nol8-demo
+#   ssh -f -N -L 8770:localhost:8770 nol8-demo   # -f -N backgrounds the tunnel
 #   open http://localhost:8770
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"

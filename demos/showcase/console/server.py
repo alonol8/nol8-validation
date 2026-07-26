@@ -583,7 +583,7 @@ def main():
     ip = lan_ip()
     print(f">> NOL8 demo console listening on {HOST}:{PORT}", flush=True)
     print(f"   over the VPN:   http://{ip}:{PORT}", flush=True)
-    print(f"   or via tunnel:  ssh -L {PORT}:localhost:{PORT} nol8-demo   (leave open)  ->  http://localhost:{PORT}", flush=True)
+    print(f"   or via tunnel:  ssh -f -N -L {PORT}:localhost:{PORT} nol8-demo   (backgrounds itself)  ->  http://localhost:{PORT}", flush=True)
     ThreadingHTTPServer((HOST, PORT), Handler).serve_forever()
 
 

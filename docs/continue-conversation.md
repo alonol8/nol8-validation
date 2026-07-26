@@ -123,7 +123,7 @@ customer's OWN policy + documents.
   policy — MUST settle (~8s) before verifying or the first docs falsely show 0
   matches (byo_poc caught this live). The console/rulecount scripts settle 6-8s.
 - **Console is RUNNING** on nol8-demo (tmux `console`, 0.0.0.0:8770; starter policy
-  restored). Reach it: `ssh -L 8770:localhost:8770 nol8-demo` → http://localhost:8770.
+  restored). Reach it: `ssh -f -N -L 8770:localhost:8770 nol8-demo` → http://localhost:8770.
 - **TODO:** the console's older "Scale" card numbers still reflect pre-10-Argus;
   re-base them. Add a BYO line to `demos/showcase/RUNBOOK.md`. Also `demos/showcase/`
   CLI tour + RUNBOOK exist.
