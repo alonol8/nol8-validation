@@ -81,6 +81,13 @@ for engine in $ENGINES; do
   echo ">> deploying the scale policy to $engine (replaces the active policy)"
   validate policy --file "$POLICY" --target "$engine" >/dev/null
   echo ">> letting the policy propagate"; sleep 6
+  # Deploy verification (ISSUE-003/007, no policy read-back): confirm the policy
+  # actually landed on this engine before we drive it — otherwise a silent stale
+  # deploy would be reported as a real throughput number. Single policy, so no
+  # set-difference; any literal must redact.
+  if ! python "$PACK/deploy_probe.py" --policy "$POLICY" --engines "$engine"; then
+    echo ">> !! deploy probe FAILED for $engine -- skipping (policy did not land)"; continue
+  fi
   echo ">> driving $engine: concurrency [$CONCURRENCY] x payloads [$PAYLOADS]"
   "$RESULTS/dp4driver" \
     --engine "$engine" \

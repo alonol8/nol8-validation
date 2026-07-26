@@ -45,6 +45,10 @@ echo ">> building the load driver"
 OUT="$RESULTS/rulecount.csv"
 rm -f "$OUT"
 
+# The policy we last confirmed live on the engines (for the deploy probe's
+# set-difference). Empty on the first cell.
+PREV_POLICY=""
+
 for R in $RULE_COUNTS; do
   echo ">> ===== rule_count=$R ====="
   GEN_OUT="$(validate generate --config config/workloads/enterprise-dlp.yaml --records "$RECORDS" --rules "$R" 2>&1)"
@@ -61,6 +65,15 @@ for R in $RULE_COUNTS; do
     echo "   !! aergia deploy failed at rule_count=$R -- skipping"; continue
   fi
   sleep 6
+  # Deploy verification (ISSUE-003 fire-and-forget, ISSUE-007 no health signal):
+  # prove the NEW ruleset actually landed on BOTH engines before we trust this
+  # cell. Probes with a literal unique to this policy vs the last one confirmed
+  # live, and prints |set(N)-set(prev)| (an empty diff = the sweep isn't varying
+  # the ruleset here, a finding in itself). A stale policy cannot pass.
+  if ! python "$PACK/deploy_probe.py" --policy "$POLICY" --prev "$PREV_POLICY" --engines themis,aergia; then
+    echo "   !! deploy probe FAILED at rule_count=$R -- aborting this cell (policy did not land)"; continue
+  fi
+  PREV_POLICY="$POLICY"
   for engine in themis aergia; do
     for rep in $(seq 1 "$REPS"); do
       echo "   -- $engine rule_count=$R rep $rep/$REPS"
