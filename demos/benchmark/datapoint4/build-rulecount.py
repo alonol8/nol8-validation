@@ -34,7 +34,7 @@ def load(csv_path: Path):
     meta = {}
     for r in csv.DictReader(csv_path.open()):
         key = (int(r["rule_count"]), r["engine"])
-        for k in ("rps", "p99_ms", "throughput_mib_s", "p50_ms"):
+        for k in ("rps", "p99_ms", "request_mib_s", "p50_ms"):
             raw[key][k].append(float(r[k]))
         raw[key]["errors"].append(int(r["errors"]))
         meta[key] = {"payload": r["payload"], "concurrency": int(r["concurrency"])}
@@ -47,7 +47,7 @@ def load(csv_path: Path):
             "concurrency": meta[(rc, eng)]["concurrency"],
             "rps": statistics.median(vals["rps"]),
             "p99_ms": statistics.median(vals["p99_ms"]),
-            "mib_s": statistics.median(vals["throughput_mib_s"]),
+            "mib_s": statistics.median(vals["request_mib_s"]),
             "p50_ms": statistics.median(vals["p50_ms"]),
             "errors": max(vals["errors"]),
             "reps": len(vals["rps"]),

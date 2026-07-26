@@ -1079,7 +1079,7 @@ def dp4_table(d) -> str:
     payloads = d.get("payloadOrder") or sorted({c["payload"] for c in cells})
     idx = _dp4_cells_index(cells)
 
-    cols = ["Engine · concurrency", "req/s", "MiB/s", "p50 ms", "p95 ms", "p99 ms", "p99.9 ms", "max ms", "errors"]
+    cols = ["Engine · concurrency", "req/s", "req MiB/s", "p50 ms", "p95 ms", "p99 ms", "p99.9 ms", "max ms", "errors"]
     tables = ""
     for pay in payloads:
         rows = []
@@ -1089,7 +1089,7 @@ def dp4_table(d) -> str:
                 rows.append([
                     label,
                     _fmt_num(c["rps"]),
-                    f"{c['throughput_mib_s']:.1f}",
+                    f"{c['request_mib_s']:.1f}",
                     f"{c['p50_ms']:.2f}",
                     f"{c['p95_ms']:.2f}",
                     f"{c['p99_ms']:.2f}",

@@ -8,7 +8,17 @@
 # Expect Themis flat, RE2 sloping down as rules climb.
 #
 # Run on EC2 (Go + reaches the engines). Deploys a fresh policy per rule count
-# to BOTH engines; same request corpus/size, only the policy changes.
+# to BOTH engines.
+#
+# CORPUS CAVEAT (do not read the cross-cell trend naively): a fresh corpus is
+# generated PER rule count, so avg_body_bytes co-varies slightly with rule count
+# (observed ~2624/2611/2580 across 2k/6k/8k, ~1.7%). The WITHIN-cell A/B is fair —
+# both engines get the identical corpus in a cell — so the engine RATIO per cell is
+# clean. The cross-cell rule-count TREND is mildly confounded by that body-size
+# drift; read it alongside the per-cell avg_body_bytes column, which the driver
+# records. (To remove the confound entirely, generate one corpus outside the loop
+# and reuse it — relies on the catalogs being nested, which they are; deferred as a
+# deliberate experiment-design change, not done here.)
 #
 #   bash demos/benchmark/datapoint4/rulecount-live.sh
 #   DP4_RULE_COUNTS="1000 4000 16000" DP4_RC_DURATION=10 bash .../rulecount-live.sh
@@ -74,9 +84,14 @@ for R in $RULE_COUNTS; do
     echo "   !! deploy probe FAILED at rule_count=$R -- aborting this cell (policy did not land)"; continue
   fi
   PREV_POLICY="$POLICY"
-  for engine in themis aergia; do
-    for rep in $(seq 1 "$REPS"); do
-      echo "   -- $engine rule_count=$R rep $rep/$REPS"
+  # Alternate which engine is driven first each rep (item 7: run-order confound).
+  # The old order ran all Themis reps then all Aergia, so Themis was ALWAYS the one
+  # measured immediately after deploy — which could account for the ~180x 5xx
+  # asymmetry all on its own. Alternating removes that as an explanation.
+  for rep in $(seq 1 "$REPS"); do
+    if [ $((rep % 2)) -eq 1 ]; then ORDER="themis aergia"; else ORDER="aergia themis"; fi
+    for engine in $ORDER; do
+      echo "   -- $engine rule_count=$R rep $rep/$REPS (order: $ORDER)"
       "$RESULTS/dp4driver" \
         --engine "$engine" --label "$engine" --input "$INPUT" \
         --concurrency "$CONC" --payloads "$PAYLOAD" \
