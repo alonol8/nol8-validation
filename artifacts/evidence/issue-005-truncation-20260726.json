@@ -1,0 +1,101 @@
+{
+  "stamp": "20260726",
+  "policy_rules": {
+    "ZZPROBE15ZZ": "[LEN15XXXXXXXX]",
+    "ZZPROBE16ZZ": "[LEN16XXXXXXXXX]",
+    "ZZPROBE20ZZ": "[LEN20XXXXXXXXXXXXX]",
+    "ZZPROBE29ZZ": "[LEN29XXXXXXXXXXXXXXXXXXXXXX]"
+  },
+  "lengths_tested": [
+    15,
+    16,
+    20,
+    29
+  ],
+  "results": {
+    "themis": [
+      {
+        "token_len_sent": 15,
+        "literal": "ZZPROBE15ZZ",
+        "token_sent": "[LEN15XXXXXXXX]",
+        "raw_result_message": "trunc probe: [LEN15XXXXXXXX] .end",
+        "emitted_token": "[LEN15XXXXXXXX]",
+        "emitted_len": 15,
+        "truncated": false,
+        "literal_gone": true
+      },
+      {
+        "token_len_sent": 16,
+        "literal": "ZZPROBE16ZZ",
+        "token_sent": "[LEN16XXXXXXXXX]",
+        "raw_result_message": "trunc probe: [LEN16XXXXXXXXX] .end",
+        "emitted_token": "[LEN16XXXXXXXXX]",
+        "emitted_len": 16,
+        "truncated": false,
+        "literal_gone": true
+      },
+      {
+        "token_len_sent": 20,
+        "literal": "ZZPROBE20ZZ",
+        "token_sent": "[LEN20XXXXXXXXXXXXX]",
+        "raw_result_message": "trunc probe: [LEN20XXXXXXXXXXXXX] .end",
+        "emitted_token": "[LEN20XXXXXXXXXXXXX]",
+        "emitted_len": 20,
+        "truncated": false,
+        "literal_gone": true
+      },
+      {
+        "token_len_sent": 29,
+        "literal": "ZZPROBE29ZZ",
+        "token_sent": "[LEN29XXXXXXXXXXXXXXXXXXXXXX]",
+        "raw_result_message": "trunc probe: [LEN29XXXXXXXXXXXXXXXXXXXXXX] .end",
+        "emitted_token": "[LEN29XXXXXXXXXXXXXXXXXXXXXX]",
+        "emitted_len": 29,
+        "truncated": false,
+        "literal_gone": true
+      }
+    ],
+    "aergia": [
+      {
+        "token_len_sent": 15,
+        "literal": "ZZPROBE15ZZ",
+        "token_sent": "[LEN15XXXXXXXX]",
+        "raw_result_message": "trunc probe: [LEN15XXXXXXXX] .end",
+        "emitted_token": "[LEN15XXXXXXXX]",
+        "emitted_len": 15,
+        "truncated": false,
+        "literal_gone": true
+      },
+      {
+        "token_len_sent": 16,
+        "literal": "ZZPROBE16ZZ",
+        "token_sent": "[LEN16XXXXXXXXX]",
+        "raw_result_message": "trunc probe: [LEN16XXXXXXXXX .end",
+        "emitted_token": "[LEN16XXXXXXXXX",
+        "emitted_len": 15,
+        "truncated": true,
+        "literal_gone": true
+      },
+      {
+        "token_len_sent": 20,
+        "literal": "ZZPROBE20ZZ",
+        "token_sent": "[LEN20XXXXXXXXXXXXX]",
+        "raw_result_message": "trunc probe: [LEN20XXXXXXXXX .end",
+        "emitted_token": "[LEN20XXXXXXXXX",
+        "emitted_len": 15,
+        "truncated": true,
+        "literal_gone": true
+      },
+      {
+        "token_len_sent": 29,
+        "literal": "ZZPROBE29ZZ",
+        "token_sent": "[LEN29XXXXXXXXXXXXXXXXXXXXXX]",
+        "raw_result_message": "trunc probe: [LEN29XXXXXXXXX .end",
+        "emitted_token": "[LEN29XXXXXXXXX",
+        "emitted_len": 15,
+        "truncated": true,
+        "literal_gone": true
+      }
+    ]
+  }
+}

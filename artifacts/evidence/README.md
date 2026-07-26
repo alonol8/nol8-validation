@@ -75,6 +75,38 @@ three `[BUSINESS_TERMS:*]` tokens that became identical under truncation across
 
 ---
 
+## issue-005-truncation-20260726.{json,md}
+
+Controlled reproduction of the token-truncation behaviour (ISSUE-005) across four
+token lengths (15/16/20/29) against both engines, plus an ISSUE-004 engine-identity
+confirmation. `.json` is the raw per-engine per-length data; `.md` is the analysis.
+Repro: `demos/benchmark/datapoint4/truncation_repro.py`.
+
+**Finding:** Themis emits full tokens at every length; **Aergia truncates to 15**.
+The truncating engine is the RE2 comparison baseline, not Themis — so ISSUE-005's
+"Component: Themis" (and the THM-5 attribution referenced above) are contradicted by
+this run. Not yet actioned pending a re-attribution decision.
+
+## DP4 throughput CSVs — PROVISIONAL, under active review
+
+These are the raw combined CSVs behind the DP4 throughput work. All are **provisional**:
+the DP4 review is open, and rule-count numbers are being re-run with a fixed harness
+(deploy probe, rep-1 basis, error accounting). Do not quote absolute numbers from these
+without checking the review status. **Do not compare absolute numbers across files with
+different edge topology** (single Argus vs 10) — only ratios within one run survive.
+
+| File | Config | What it is |
+|---|---|---|
+| `rulecount-jul24-cliff.csv` | single edge, conc 256, small | Rule-count sweep, Jul 24. Contains the Aergia@8k collapse (~8.4k). |
+| `rulecount-jul25-clean.csv` | **single edge**, conc 256, small | Rule-count sweep, Jul 25. Flat ~28.6k/~26.4k, ~1.09×, no collapse. **Single-edge — the flatness is the edge ceiling, NOT engine parity; do not read as "engines are equal."** |
+| `rulecount-10argus-jul25-partial.csv` | 10 edge, conc 256, small | Partial 10-edge sweep (2k/4k/8k only), Jul 25. Corroborates the clean file. |
+| `rulecount-10argus-clean.csv` | 10 edge, conc 256, small, 5 reps | The current rule-count sweep on the 10-node edge. Reps are a degrading series — use rep-1, not median (see review). |
+| `concpush-8k-themis-10argus.csv` | 10 edge, 8k rules, conc 256/512/1024 | Concurrency push, Themis. |
+| `concpush-8k-aergia-10argus.csv` | 10 edge, 8k rules, conc 256/512/1024 | Concurrency push, Aergia. |
+| `throughput_combined-fairrun.csv` | **single edge**, 4k rules, payload×conc | The original DP4 fair run. **Superseded for absolute throughput** (single-edge ceiling; large-payload row shows the disproven ~150 MB/s figure). Kept as the pre-10-edge baseline. |
+
+---
+
 ## Reproducing rather than retaining
 
 Any run can be regenerated deterministically from its configuration and seed,
