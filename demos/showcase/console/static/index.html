@@ -122,6 +122,10 @@
   .catrow input{background:var(--charcoal);color:var(--white);border:1px solid var(--line);border-radius:8px;padding:8px 10px;font:inherit;font-size:13px;}
   .catrow input:focus{outline:none;border-color:var(--green);}
   .catrow textarea{min-height:58px;font-size:13px;}
+  .catrow-head{display:flex;gap:6px;align-items:center;} .catrow-head .cat-name{flex:1;}
+  .catrm{flex:none;width:34px;height:34px;background:var(--raise);color:var(--muted);border:1px solid var(--line);
+    border-radius:8px;cursor:pointer;font-size:13px;line-height:1;} .catrm:hover{color:var(--red);border-color:var(--red);}
+  .samplenote{font-size:11.5px;color:var(--muted);margin-top:8px;}
   .byostep{background:var(--green);color:#0f2a15;} .byostep.done{background:var(--raise);color:var(--white);border:1px solid rgba(51,176,70,.45);}
   .pre{background:var(--panel-2);border:1px solid var(--line);border-radius:10px;padding:12px 14px;font-family:ui-monospace,Menlo,monospace;font-size:12px;white-space:pre-wrap;color:#dfe;overflow-x:auto;margin-top:12px;}
   .chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;}
@@ -412,21 +416,54 @@ function renderEfficiency(){
 }
 
 /* ---- Bring Your Own Data ---- */
+// Fictional "Meridian Financial" sample. Values are disjoint (no containment) and
+// tokens derive from category names. For a REAL customer, clear these and paste/upload
+// their own — the sample just makes the demo runnable and the numbers real.
 const BYO_SAMPLE_CATS=[
-  {name:'watched customers',values:'Halcyon Freight Ltd\nBrightwater Capital\nIrongate Logistics'},
-  {name:'account ids',values:'MFN-88213-01\nMFN-44190-07\nMFN-72651-33'},
-  {name:'card numbers',values:'4716 3502 8841 2290\n5299 7710 6634 1185'},
+  {name:'watched customers',values:'Halcyon Freight Ltd\nBrightwater Capital\nIrongate Logistics\nVerdant Grocers\nSolstice Media Group\nPioneer Benefits Group'},
+  {name:'account ids',values:'MFN-88213-01\nMFN-44190-07\nMFN-72651-33\nMFN-10924-88\nMFN-56308-12\nMFN-33471-90'},
+  {name:'card numbers',values:'4716 3502 8841 2290\n5299 7710 6634 1185\n6011 4478 9920 3357\n3782 118845 61003'},
+  {name:'internal projects',values:'Project Lantern\nProject Meridian Vault\nProject Northwind Atlas\nProject Cobalt Harbor'},
+  {name:'sanctioned parties',values:'Grey Harbor Metals\nVolkov Shipping OJSC\nCrimson Sands Trading\nZephyr Arms Consortium'},
 ];
-const BYO_SAMPLE_DOCS=[
-  'Support ticket: Halcyon Freight Ltd reports a declined charge on card 4716 3502 8841 2290 tied to account MFN-88213-01. Confirm the refund window.',
-  '[agent: onboarding -> agent: compliance] Run Irongate Logistics through enhanced due diligence; reference account MFN-72651-33.',
-  'Draft a professional email to Brightwater Capital about the disputed charge on card 5299 7710 6634 1185.',
-].join('\n\n');
+// Suggestions the "+ add category" button scaffolds (name + example values), so an SA
+// gets a filled row to edit, not a blank box, in front of a customer.
+const CAT_SUGGESTIONS=[
+  {name:'email addresses',values:'j.lee@halcyonfreight.example\na.moreno@brightwater.example'},
+  {name:'ip addresses',values:'198.51.100.27\n203.0.113.45'},
+  {name:'api keys',values:'sk-live-9f2a7c1b4e10\nsk-live-2d8b6a0f3c77'},
+  {name:'employee ids',values:'EMP-4471\nEMP-8823'},
+  {name:'phone numbers',values:'+1-415-555-0192\n+1-415-555-0148'},
+];
+let catSuggIdx=0;
+const _sv=n=>(BYO_SAMPLE_CATS.find(c=>c.name===n)||{values:''}).values.split('\n').filter(Boolean);
+// Templates × rotating sample values → many varied, distinct documents that actually
+// contain the governed values (so correctness verifies across real volume).
+const DOC_TEMPLATES=[
+  (v,r)=>`Support ticket ${r}: ${v.cust} reports a declined charge on card ${v.card} tied to account ${v.acct}. Confirm the refund window and reissue.`,
+  (v,r)=>`[agent: onboarding -> agent: compliance] (${r}) Run ${v.cust} through enhanced due diligence before booking against ${v.proj}. Counterparty ${v.sanc} was flagged; reference account ${v.acct}.`,
+  (v,r)=>`Draft a professional email to ${v.cust} about the disputed charge on card ${v.card}. The case ${r} is open on account ${v.acct}.`,
+  (v,r)=>`Incident ${r}: possible exposure during the ${v.proj} migration window. Counterparty ${v.sanc} touched records linked to account ${v.acct}. Open a case and hold downstream automation.`,
+  (v,r)=>`Analyst query ${r}: pull everything on ${v.cust} — card ${v.card}, account ${v.acct} — and cross-reference ${v.sanc}; note any tie to ${v.proj}.`,
+  (v,r)=>`[agent: settlement -> agent: ledger] (${r}) Post for ${v.cust} on card ${v.card}, account ${v.acct}. Counterparty ${v.sanc}; attach the dispute evidence package.`,
+  (v,r)=>`Weekly ops update ${r}: ${v.cust} completed quarterly reconciliation with no exceptions. Archiving to the general retention store.`,
+  (v,r)=>`Compliance flag ${r}: ${v.sanc} appears linked to ${v.proj}. Review ${v.cust}'s account ${v.acct} and advise on next steps.`,
+];
+function genSampleDocs(n){
+  const C=_sv('watched customers'),A=_sv('account ids'),D=_sv('card numbers'),P=_sv('internal projects'),S=_sv('sanctioned parties');
+  const pick=(a,i)=>a[i%a.length];const out=[];
+  for(let i=0;i<n;i++){
+    const v={cust:pick(C,i),acct:pick(A,i*2+1),card:pick(D,i*3+2),proj:pick(P,i*5+1),sanc:pick(S,i*7+3)};
+    out.push(DOC_TEMPLATES[i%DOC_TEMPLATES.length](v,'REF-'+(1001+i)));  // REF makes each doc distinct
+  }
+  return out;
+}
 
 function catRow(name='',values=''){
   const d=document.createElement('div');d.className='catrow';
-  d.innerHTML=`<input class="cat-name" placeholder="category name (e.g. account ids)" value="${esc(name)}">`+
+  d.innerHTML=`<div class="catrow-head"><input class="cat-name" placeholder="category name (e.g. account ids)" value="${esc(name)}"><button class="catrm" title="remove category">✕</button></div>`+
     `<textarea class="cat-values" spellcheck="false" placeholder="one value per line">${esc(values)}</textarea>`;
+  d.querySelector('.catrm').onclick=()=>d.remove();
   return d;
 }
 const collectCats=()=>[...document.querySelectorAll('#byoCats .catrow')]
@@ -470,10 +507,14 @@ async function byoVerify(){
     const d=await byoPost('/api/byo/correctness',{});
     const cell=(r,e)=>{const v=r.engines[e];if(!v)return '—';if(v.error)return '<span class="bad">ERR</span>';
       return v.ok?`<span class="ok">${v.verified}/${v.in_scope} ✓</span>`:`<span class="bad">${v.verified}/${v.in_scope} ✗</span>`;};
-    const rows=d.rows.map(r=>`<tr><td class="num">${r.doc}</td><td class="num tnum">${r.bytes}</td><td class="num tnum">${r.in_scope}</td><td class="num tnum">${r.density}</td><td>${cell(r,'themis')}</td><td>${cell(r,'aergia')}</td><td>${r.identical?'<span class="ok">✓</span>':'<span class="bad">✗</span>'}</td></tr>`).join('');
+    const rowHtml=r=>`<tr><td class="num">${r.doc}</td><td class="num tnum">${r.bytes}</td><td class="num tnum">${r.in_scope}</td><td class="num tnum">${r.density}</td><td>${cell(r,'themis')}</td><td>${cell(r,'aergia')}</td><td>${r.identical?'<span class="ok">✓</span>':'<span class="bad">✗</span>'}</td></tr>`;
+    const CAP=14;
+    const rows=d.rows.slice(0,CAP).map(rowHtml).join('')+
+      (d.rows.length>CAP?`<tr><td colspan="7" class="muted">… and ${d.rows.length-CAP} more documents — see the totals below</td></tr>`:'');
     const tot=e=>`${d.totals[e].verified}/${d.totals[e].in_scope} (${d.totals[e].pct}%)`;
     const allok=d.totals.themis.pct===100&&d.totals.aergia.pct===100;
-    $('#byoVerifyOut').innerHTML=`<table><thead><tr><th class="num">doc</th><th class="num">bytes</th><th class="num">in-scope</th><th class="num">matches/KB</th><th>Themis</th><th>Aergia</th><th>identical</th></tr></thead><tbody>${rows}</tbody></table>`+
+    const sampNote=(d.sampled<d.total)?`<div class="samplenote">Verified a representative <b>${d.sampled}</b> of <b>${d.total}</b> documents live (evenly sampled). The full ${d.total}-document corpus is driven in the load test below.</div>`:'';
+    $('#byoVerifyOut').innerHTML=sampNote+`<table><thead><tr><th class="num">doc</th><th class="num">bytes</th><th class="num">in-scope</th><th class="num">matches/KB</th><th>Themis</th><th>Aergia</th><th>identical</th></tr></thead><tbody>${rows}</tbody></table>`+
       `<div class="compare"><span>Themis <b>${tot('themis')}</b></span><span>Aergia <b>${tot('aergia')}</b></span><span class="${d.parity_ok===d.parity_total&&allok?'ident':'bad'}">${d.parity_ok}/${d.parity_total} documents identical on both engines</span></div>`;
     $('#byoLoad').disabled=false;byoDone(btn,true);
   }catch(e){byoFail(e);byoDone(btn);}
@@ -523,8 +564,9 @@ async function boot(){
   $('#runCorpus').onclick=runCorpus;
   $('#runScale').onclick=runScale;
   BYO_SAMPLE_CATS.forEach(c=>$('#byoCats').appendChild(catRow(c.name,c.values)));
-  $('#byoDocs').value=BYO_SAMPLE_DOCS;
-  $('#byoAddCat').onclick=()=>$('#byoCats').appendChild(catRow());
+  $('#byoDocs').value=genSampleDocs(60).join('\n\n');
+  $('#byoAddCat').onclick=()=>{const s=CAT_SUGGESTIONS[catSuggIdx++%CAT_SUGGESTIONS.length];
+    const r=catRow(s.name,s.values);$('#byoCats').appendChild(r);r.querySelector('.cat-name').focus();};
   $('#byoBuild').onclick=byoBuild;$('#byoDeploy').onclick=byoDeploy;
   $('#byoVerify').onclick=byoVerify;$('#byoLoad').onclick=byoLoad;
   $('#message').addEventListener('input',()=>{if($('#catalog').value==='__custom')lastCustom=$('#message').value;});

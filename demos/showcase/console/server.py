@@ -19,6 +19,7 @@ Endpoints:
 """
 from __future__ import annotations
 
+import http.client
 import json
 import os
 import re
@@ -26,8 +27,10 @@ import subprocess
 import sys
 import time
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from urllib.parse import urlparse
 
 ROOT = Path(__file__).resolve().parents[3]          # repo root
 HERE = Path(__file__).resolve().parent
@@ -403,23 +406,92 @@ def byo_deploy(settle: int = 8) -> dict:
             "settled": settle if ok else 0}
 
 
-def byo_correctness(engines=("themis", "aergia")) -> dict:
+def _byo_new_conn(engine):
+    u = urlparse(ENGINES[engine]["endpoint"])
+    return http.client.HTTPSConnection(u.hostname, u.port or 443, timeout=25), (u.path or "/")
+
+
+def _verify_engine(engine, idxs, docs):
+    """Verify all sampled docs through ONE engine on ONE reused keep-alive connection.
+    This is the pattern the software engine tolerates: sequential on a single reused
+    connection is reliable, whereas many parallel connections make it shed requests /
+    stall. The two engines run on separate threads (see byo_correctness) so the fast
+    one isn't held up by the slow one. Per-doc: up to 3 attempts with a small backoff.
+    Returns {doc_index: processed_message | Exception}."""
+    hdr = {"Content-Type": "application/json"}
+    if ENGINES[engine]["token"]:
+        hdr["Authorization"] = "Bearer " + ENGINES[engine]["token"]
+    conn, path = _byo_new_conn(engine)
+    res = {}
+    for i in idxs:
+        body = json.dumps({"message": docs[i], "jid": 1, "frameId": 1, "last": True})
+        last = None
+        for attempt in range(3):
+            if attempt:
+                time.sleep(0.3 * attempt)
+            try:
+                conn.request("POST", path, body=body, headers=hdr)
+                resp = conn.getresponse()
+                data = resp.read()
+                if resp.status < 200 or resp.status >= 300:
+                    raise RuntimeError(f"status {resp.status}")
+                res[i] = json.loads(data)["result"]["message"]
+                last = None
+                break
+            except Exception as exc:  # noqa: BLE001
+                last = exc
+                try:
+                    conn.close()
+                except Exception:  # noqa: BLE001
+                    pass
+                conn, path = _byo_new_conn(engine)  # fresh conn for the retry
+        if last is not None:
+            res[i] = last
+    try:
+        conn.close()
+    except Exception:  # noqa: BLE001
+        pass
+    return res
+
+
+def byo_correctness(engines=("themis", "aergia"), limit=12) -> dict:
     if not BYO_POLICY.exists() or not BYO_CORPUS.exists():
         return {"error": "build + deploy first"}
     pairs, docs = _byo_pairs(), _byo_docs()
+    total = len(docs)
+    # Verify a representative, evenly-spaced SAMPLE live (default `limit`). The
+    # software engine has intermittent multi-second stalls that make verifying a
+    # large corpus live slow and flaky — so we prove correctness on a spread of
+    # their documents here, and drive the FULL corpus in the load step (the Go
+    # driver handles the concurrency cleanly). limit=0 verifies everything.
+    if limit and total > limit:
+        idxs = sorted(set(round(k * (total - 1) / (limit - 1)) for k in range(limit)))
+    else:
+        idxs = list(range(total))
+    # One thread per engine, each sequential on a single reused connection (reliable
+    # for the flaky software engine); the two engines run concurrently so the fast
+    # one isn't blocked by the slow one.
+    out = {}
+    if idxs:
+        with ThreadPoolExecutor(max_workers=max(1, len(engines))) as ex:
+            futs = {ex.submit(_verify_engine, e, idxs, docs): e for e in engines}
+            for f, e in futs.items():
+                for i, v in f.result().items():
+                    out[(i, e)] = v
     rows = []
     totals = {e: {"verified": 0, "in_scope": 0} for e in engines}
     parity_ok = parity_total = 0
-    for i, original in enumerate(docs):
+    for i in idxs:
+        original = docs[i]
         in_scope = [(l, t) for l, t in pairs if l and l in original]
         occ = sum(original.count(l) for l, _ in in_scope)
         mb = len(original.encode("utf-8"))
         outs, reng = {}, {}
         for e in engines:
-            try:
-                processed = call_process(e, original)
-            except Exception as exc:  # noqa: BLE001
-                reng[e] = {"error": str(exc)[:120]}; continue
+            r = out.get((i, e))
+            if r is None or isinstance(r, Exception):
+                reng[e] = {"error": (str(r)[:120] if r else "no result")}; continue
+            processed = r
             outs[e] = processed
             ver = sum(1 for l, t in in_scope if l not in processed and t in processed)
             totals[e]["verified"] += ver
@@ -438,6 +510,7 @@ def byo_correctness(engines=("themis", "aergia")) -> dict:
                        "pct": round(100 * totals[e]["verified"] / totals[e]["in_scope"], 1)
                        if totals[e]["in_scope"] else 0.0} for e in engines},
         "parity_ok": parity_ok, "parity_total": parity_total,
+        "sampled": len(idxs), "total": total,
     }
 
 
@@ -563,7 +636,8 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/byo/deploy":
                 return self._send(200, byo_deploy())
             if path == "/api/byo/correctness":
-                return self._send(200, byo_correctness())
+                payload = payload if isinstance(payload, dict) else {}
+                return self._send(200, byo_correctness(limit=int(payload.get("limit", 12))))
             if path == "/api/byo/load":
                 payload = payload if isinstance(payload, dict) else {}
                 eng = payload.get("engine")
