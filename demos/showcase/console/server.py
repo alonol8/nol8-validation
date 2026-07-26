@@ -566,9 +566,12 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, byo_correctness())
             if path == "/api/byo/load":
                 payload = payload if isinstance(payload, dict) else {}
+                eng = payload.get("engine")
+                engs = (eng,) if eng in ENGINES else ("themis", "aergia")
                 return self._send(200, byo_load(
                     concurrency=int(payload.get("concurrency", 256)),
-                    duration=int(payload.get("duration", 10))))
+                    duration=int(payload.get("duration", 10)),
+                    engines=engs))
             return self._send(404, {"error": "not found"})
         except Exception as exc:  # noqa: BLE001
             return self._send(502, {"error": str(exc)})

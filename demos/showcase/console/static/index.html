@@ -130,6 +130,12 @@
   .applied{display:flex;gap:14px;flex-wrap:wrap;margin-top:12px;}
   .appbadge{display:flex;align-items:center;gap:8px;font-size:14px;background:var(--panel-2);border:1px solid var(--line);border-radius:10px;padding:10px 14px;}
   .appbadge.ok{border-color:rgba(51,176,70,.45);} .appbadge .s{font-weight:700;}
+  .loadstatus{display:flex;align-items:center;gap:12px;margin-top:14px;padding:12px 16px;background:var(--panel-2);
+    border:1px solid rgba(51,176,70,.35);border-radius:10px;font-size:14px;}
+  .loadstatus .stage{font-weight:600;} .loadstatus .el{color:var(--muted);font-variant-numeric:tabular-nums;margin-left:auto;}
+  .loadstatus.done{border-color:var(--line);}
+  .stepline{display:flex;gap:8px;align-items:center;font-size:12.5px;color:var(--muted);margin:4px 0;}
+  .stepline .tick{color:var(--green);} .stepline.active{color:var(--white);}
 </style>
 </head>
 <body>
@@ -472,19 +478,44 @@ async function byoVerify(){
     $('#byoLoad').disabled=false;byoDone(btn,true);
   }catch(e){byoFail(e);byoDone(btn);}
 }
+function byoEngineCard(r,fpga){
+  if(!r)return '';
+  if(r.error)return `<div class="aggcard"><h4>${esc(r.label)}</h4><div class="err">⚠ ${esc(r.error)}</div></div>`;
+  const cells=r.cells.filter(c=>c.rps>0).map(c=>`<div class="m"><div class="v ${fpga?'grn':''} tnum">${c.rps.toLocaleString()}</div><div class="k">${c.payload} req/s · p99 ${c.p99}ms · ${c.errors} err</div></div>`).join('');
+  return `<div class="aggcard ${fpga?'fpga':''}"><h4>${esc(r.label)}</h4><div class="grid">${cells||'<div class="scope">no cells</div>'}</div></div>`;
+}
+function byoSmallRps(r){if(!r||r.error)return 0;const c=r.cells.find(x=>x.payload==='small'&&x.rps>0);return c?c.rps:0;}
 async function byoLoad(){
-  $('#byoErr').hidden=true;const btn=$('#byoLoad');byoBusy(btn,'Driving their corpus (~40s)…');
+  $('#byoErr').hidden=true;const btn=$('#byoLoad');byoBusy(btn,'Running load test…');
+  const out=$('#byoLoadOut');
+  out.innerHTML=`<div class="loadstatus"><span class="spin"></span><span class="stage" id="loadStage">Starting — same corpus + policy to both engines…</span><span class="el" id="loadEl">0s</span></div>`+
+    `<div id="loadSteps" style="margin-top:10px"></div><div class="agg" id="loadCards" style="margin-top:10px"></div><div id="loadFoot"></div>`;
+  const t0=Date.now();
+  const timer=setInterval(()=>{const el=$('#loadEl');if(el)el.textContent=Math.round((Date.now()-t0)/1000)+'s';},250);
+  const setStage=t=>{const s=$('#loadStage');if(s)s.textContent=t;};
+  const addStep=msg=>{const d=document.createElement('div');d.className='stepline active';d.innerHTML='<span class="spin"></span> '+msg;$('#loadSteps').appendChild(d);return d;};
+  const finishStep=(d,msg)=>{d.className='stepline';d.innerHTML='<span class="tick">✓</span> '+msg;};
+  const res={};
   try{
-    const d=await byoPost('/api/byo/load',{concurrency:256,duration:10});
-    const card=(e,fpga)=>{const r=d.engines[e];if(!r)return '';
-      if(r.error)return `<div class="aggcard"><h4>${esc(r.label)}</h4><div class="err">⚠ ${esc(r.error)}</div></div>`;
-      const cells=r.cells.filter(c=>c.rps>0).map(c=>`<div class="m"><div class="v ${fpga?'grn':''} tnum">${c.rps.toLocaleString()}</div><div class="k">${c.payload} req/s · p99 ${c.p99}ms · ${c.errors} err</div></div>`).join('');
-      return `<div class="aggcard ${fpga?'fpga':''}"><h4>${esc(r.label)}</h4><div class="grid">${cells||'<div class="scope">no cells</div>'}</div></div>`;};
-    const ratio=d.ratio?`<div class="compare"><span class="ident">✓ ${esc(d.ratio.lead)} leads ${d.ratio.x}× on the customer's data (${d.ratio.hi.toLocaleString()} vs ${d.ratio.lo.toLocaleString()} req/s)</span></div>`:'';
-    const warn=d.warn?`<div class="warn" style="margin-top:10px">⚠ ${esc(d.warn)}</div>`:'';
-    $('#byoLoadOut').innerHTML=`<div class="agg" style="margin-top:6px">${card('themis',true)}${card('aergia',false)}</div>${ratio}${warn}`;
+    let ln=addStep('Driving Themis · FPGA at 256 concurrency (~20s)…');setStage('Driving Themis (FPGA)…');
+    res.themis=(await byoPost('/api/byo/load',{engine:'themis',concurrency:256,duration:10})).engines.themis;
+    finishStep(ln,`Themis done — ${byoSmallRps(res.themis).toLocaleString()} req/s`);
+    $('#loadCards').innerHTML=byoEngineCard(res.themis,true);
+    ln=addStep('Driving Aergia · RE2 software at 256 concurrency (~20s)…');setStage('Driving Aergia (RE2 software)…');
+    const ad=await byoPost('/api/byo/load',{engine:'aergia',concurrency:256,duration:10});
+    res.aergia=ad.engines.aergia;
+    finishStep(ln,`Aergia done — ${byoSmallRps(res.aergia).toLocaleString()} req/s`);
+    $('#loadCards').innerHTML=byoEngineCard(res.themis,true)+byoEngineCard(res.aergia,false);
+    const a=byoSmallRps(res.themis),b=byoSmallRps(res.aergia);let foot='';
+    if(a&&b){const hi=Math.max(a,b),lo=Math.min(a,b),lead=a>=b?res.themis.label:res.aergia.label;
+      foot+=`<div class="compare"><span class="ident">✓ ${esc(lead)} leads ${(hi/lo).toFixed(2)}× on the customer's data (${hi.toLocaleString()} vs ${lo.toLocaleString()} req/s)</span></div>`;}
+    if(ad.warn)foot+=`<div class="warn" style="margin-top:10px">⚠ ${esc(ad.warn)}</div>`;
+    $('#loadFoot').innerHTML=foot;
+    setStage('Load test complete');
+    const st=$('.loadstatus');if(st){st.classList.add('done');const sp=st.querySelector('.spin');if(sp)sp.remove();}
     byoDone(btn,true);
-  }catch(e){byoFail(e);byoDone(btn);}
+  }catch(e){byoFail(e);setStage('Load test failed');byoDone(btn);}
+  finally{clearInterval(timer);}
 }
 
 async function boot(){
