@@ -1,7 +1,9 @@
 # ISSUE-005 token truncation — which engine, at what length (2026-07-26)
 
-Controlled reproduction to settle the attribution ISSUE-005 asserts. Companion raw
-data: `issue-005-truncation-20260726.json`. Repro script:
+Controlled reproduction of the truncation behaviour across token lengths, on both
+engines, as a dated observation. It does NOT settle ISSUE-005's attribution — see the
+Observation section below; that is a question for engineering. Companion raw data:
+`issue-005-truncation-20260726.json`. Repro script:
 `demos/benchmark/datapoint4/truncation_repro.py`.
 
 ## Method
@@ -38,20 +40,27 @@ does not rely on that label: the ISSUE-004 overlap-corruption fingerprint. Polic
 (Correct output is `x [P]EFG y`. Themis's own report, ISSUE-004, shows the same
 overlap-fires-both signature.)
 
-## Conclusion
+## Observation (NOT a conclusion — a question for engineering)
 
-- **The truncating engine is Aergia (the RE2 comparison baseline), not Themis.**
-  ISSUE-005 states "Component: Themis runtime" — that attribution is **wrong**. Its own
-  reproduction never pinned the port (`https://<tenant-host>/v1/process`), so the
-  Themis label was an assumption; this controlled run contradicts it.
-- Each engine has exactly one defect in this pair: **Themis corrupts overlapping
-  matches (ISSUE-004); Aergia truncates long tokens (ISSUE-005).** They do not share
-  either.
-- Implication for our own framework: we have been budgeting replacement tokens to 15
-  characters (`_token_for` in the BYO POC and console; the qualification generator's
-  abbreviations) to accommodate a limit that belongs to the comparison baseline, not to
-  Themis. That constraint should be re-examined — see the blast-radius list in the
-  review status.
+In this single controlled run, on the current tenant, under the `config/demo.env`
+port labelling confirmed via the ISSUE-004 fingerprint: the `:443` engine emitted
+full tokens at every length and the `:444` engine truncated to 15.
 
-**Not yet actioned:** ISSUE-005 is not rewritten pending a decision on re-attribution
-and the blast radius. This file is the evidence that decision rests on.
+**This is a dated observation, not a re-attribution.** It contradicts ISSUE-005's
+"Component: Themis" attribution, and whether ISSUE-005 is wrong, stale, or measured
+under different conditions cannot be settled from one experiment — that depends on
+history the repo does not record (what was tested when ISSUE-005 was filed, and what
+has changed on either path since). Per the review standard, a result that contradicts
+a filed issue is raised with engineering, not concluded here.
+
+Accordingly:
+
+- **ISSUE-005 and THM-5 are NOT changed.** No re-attribution.
+- The 15-character token budgeting in the framework (`_token_for`, generator
+  abbreviations) is **left as-is** — do not loosen it on the strength of this run.
+- The open questions go to engineering, appended to
+  `docs/aergia-8k-collapse-question.md`: which component applies the limit, and whether
+  anything changed on the FPGA path since ISSUE-005 was filed.
+
+This file exists to preserve the observation, dated, so engineering's answer can be
+checked against it. It is evidence, not a verdict.

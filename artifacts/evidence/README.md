@@ -82,10 +82,11 @@ token lengths (15/16/20/29) against both engines, plus an ISSUE-004 engine-ident
 confirmation. `.json` is the raw per-engine per-length data; `.md` is the analysis.
 Repro: `demos/benchmark/datapoint4/truncation_repro.py`.
 
-**Finding:** Themis emits full tokens at every length; **Aergia truncates to 15**.
-The truncating engine is the RE2 comparison baseline, not Themis — so ISSUE-005's
-"Component: Themis" (and the THM-5 attribution referenced above) are contradicted by
-this run. Not yet actioned pending a re-attribution decision.
+**Observation (not a conclusion):** in this run the `:443` engine emitted full tokens
+and `:444` truncated to 15. It contradicts ISSUE-005's "Component: Themis" (and the
+THM-5 line above), but a single experiment does not re-attribute a filed issue that was
+raised with engineering under context the repo does not hold. ISSUE-005/THM-5 are
+**unchanged**; the questions are appended to `docs/aergia-8k-collapse-question.md`.
 
 ## DP4 throughput CSVs — PROVISIONAL, under active review
 

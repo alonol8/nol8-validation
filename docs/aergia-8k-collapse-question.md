@@ -1,4 +1,11 @@
-# Question for engineering: Aergia at 8,000 rules, July 24 → July 25
+# Questions for engineering (two topics)
+
+Topic 1: the Aergia 8,000-rule collapse (July 24 → July 25).
+Topic 2: the replacement-token 15-character truncation (ISSUE-005).
+
+---
+
+# Topic 1 — Aergia at 8,000 rules, July 24 → July 25
 
 **Ask:** what changed in the Aergia (RE2) build/config between July 24 and July 25
 that removed a throughput collapse at 8,000 rules? We are not blocked on this, but
@@ -58,3 +65,44 @@ That leaves the Aergia build/config itself. Candidate questions:
 
 Both are single-edge sweeps; the 10-edge runs
 (`rulecount-10argus-*.csv`) also show no collapse.
+
+---
+
+# Topic 2 — replacement-token truncation at 15 characters (ISSUE-005)
+
+**Ask:** we want to describe the 15-character replacement-token limit correctly, and
+a recent controlled run does not line up with how ISSUE-005 is filed. We are not
+changing anything on our side pending your answer.
+
+## Two questions
+
+1. **Which component applies the 15-character replacement limit** — the FPGA path, the
+   software path, or something shared (e.g. a shared gateway/serialisation layer)? And is
+   it a fixed-width field, a configured value, or a buffer size?
+2. **Has anything changed on the FPGA path since ISSUE-005 was filed** — a new AFI, a
+   rebuild, or a config change — that would explain full-length tokens now where they
+   truncated then?
+
+## Why we ask (a dated observation, not a conclusion)
+
+A controlled run on 2026-07-26 sent one policy with replacement tokens of 15/16/20/29
+characters to both engines and recorded what each emitted:
+
+| token length sent | `:443` (FPGA path) | `:444` (software path) |
+|---|---|---|
+| 15 | 15 (full) | 15 (full) |
+| 16 | 16 (full) | 15 (truncated) |
+| 20 | 20 (full) | 15 (truncated) |
+| 29 | 29 (full) | 15 (truncated) |
+
+Port identity was checked independently via the ISSUE-004 overlap behaviour (`:443`
+shows the overlap corruption, `:444` does not). In this run the truncation appeared on
+the `:444` (software) path and not on `:443`, which is the opposite of ISSUE-005's
+"Component: Themis". We are **not** treating that as settled — it is one experiment, on
+the current tenant, and it may reflect a change since ISSUE-005 was filed or a detail we
+are missing. Hence the two questions above rather than a re-filing.
+
+## Evidence (committed)
+
+- `artifacts/evidence/issue-005-truncation-20260726.json` — raw per-engine, per-length.
+- `artifacts/evidence/issue-005-truncation-20260726.md` — the table + method.
