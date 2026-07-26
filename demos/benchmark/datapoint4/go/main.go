@@ -186,6 +186,45 @@ func doRequest(client *http.Client, endpoint, token string, body []byte) error {
 	return nil
 }
 
+// ---- error classification (diagnostic) ----
+//
+// The `errors` counter is the number that gates a run; this breaks that same
+// number down by cause so an error spike is interpretable (edge 5xx vs peer
+// reset vs client timeout vs local dial/port failure) instead of opaque. It
+// does NOT change what is measured or the CSV schema - it is a stdout-only
+// annotation printed when a cell records errors.
+type errClass struct {
+	dial, timeout, reset, refused, eof, status4xx, status5xx, other int64
+}
+
+func (e *errClass) add(err error) {
+	s := err.Error()
+	switch {
+	case strings.Contains(s, "timeout") || strings.Contains(s, "deadline exceeded"):
+		atomic.AddInt64(&e.timeout, 1)
+	case strings.Contains(s, "connection reset") || strings.Contains(s, "reset by peer"):
+		atomic.AddInt64(&e.reset, 1)
+	case strings.Contains(s, "connection refused"):
+		atomic.AddInt64(&e.refused, 1)
+	case strings.Contains(s, "EOF"):
+		atomic.AddInt64(&e.eof, 1)
+	// EADDRNOTAVAIL / DNS / dial failures = local-side (port exhaustion lives here).
+	case strings.Contains(s, "assign requested address") || strings.Contains(s, "no such host") || strings.Contains(s, "dial "):
+		atomic.AddInt64(&e.dial, 1)
+	case strings.HasPrefix(s, "status 5"):
+		atomic.AddInt64(&e.status5xx, 1)
+	case strings.HasPrefix(s, "status 4"):
+		atomic.AddInt64(&e.status4xx, 1)
+	default:
+		atomic.AddInt64(&e.other, 1)
+	}
+}
+
+func (e *errClass) summary() string {
+	return fmt.Sprintf("dial=%d timeout=%d reset=%d refused=%d eof=%d http4xx=%d http5xx=%d other=%d",
+		e.dial, e.timeout, e.reset, e.refused, e.eof, e.status4xx, e.status5xx, e.other)
+}
+
 // ---- one measurement cell ----
 
 type cellResult struct {
@@ -199,6 +238,7 @@ type cellResult struct {
 	Errors      int64
 	BytesSent   int64
 	Hist        *latHist
+	ErrClass    *errClass // diagnostic breakdown of Errors (nil if none)
 }
 
 func (r cellResult) rps() float64 {
@@ -228,7 +268,7 @@ func (r cellResult) overflow() int64 {
 // When measure is false (warm-up) it discards timings; the caller runs a warm-up
 // phase, then a measured phase, on the same client so connections stay warm.
 func runPhase(client *http.Client, endpoint, token string, bodies [][]byte,
-	concurrency int, dur time.Duration, measure bool) (*latHist, int64, int64, int64) {
+	concurrency int, dur time.Duration, measure bool, ec *errClass) (*latHist, int64, int64, int64) {
 
 	deadline := time.Now().Add(dur)
 	var next uint64
@@ -250,6 +290,9 @@ func runPhase(client *http.Client, endpoint, token string, bodies [][]byte,
 				lat := time.Since(start)
 				if err != nil {
 					atomic.AddInt64(&errors, 1)
+					if measure && ec != nil {
+						ec.add(err)
+					}
 					continue
 				}
 				atomic.AddInt64(&completed, 1)
@@ -273,10 +316,11 @@ func runCell(client *http.Client, engine, endpoint, token string, cb *corpusBuck
 	concurrency int, warmup, steady time.Duration) cellResult {
 
 	if warmup > 0 {
-		runPhase(client, endpoint, token, cb.bodies, concurrency, warmup, false)
+		runPhase(client, endpoint, token, cb.bodies, concurrency, warmup, false, nil)
 	}
+	ec := &errClass{}
 	hist, completed, errors, bytesSent := runPhase(
-		client, endpoint, token, cb.bodies, concurrency, steady, true)
+		client, endpoint, token, cb.bodies, concurrency, steady, true, ec)
 
 	return cellResult{
 		Engine:      engine,
@@ -289,6 +333,7 @@ func runCell(client *http.Client, engine, endpoint, token string, cb *corpusBuck
 		Errors:      errors,
 		BytesSent:   bytesSent,
 		Hist:        hist,
+		ErrClass:    ec,
 	}
 }
 
@@ -444,6 +489,9 @@ func main() {
 			fmt.Printf("rps=%.0f  p50=%.2fms p99=%.2fms p99.9=%.2fms  err=%d\n",
 				r.rps(), ms(r.Hist.percentile(0.50)), ms(r.Hist.percentile(0.99)),
 				ms(r.Hist.percentile(0.999)), r.Errors)
+			if r.Errors > 0 && r.ErrClass != nil {
+				fmt.Printf("   errbreak: %s\n", r.ErrClass.summary())
+			}
 			// Rewrite after every cell so a long sweep that is interrupted still
 			// leaves the cells it did finish.
 			if err := writeCSV(*output, rows); err != nil {

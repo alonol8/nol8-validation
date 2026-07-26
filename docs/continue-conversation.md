@@ -1,153 +1,118 @@
 # Continue conversation — NOL8 validation / demos
 
-Rewritten 2026-07-25 (evening — the Argus finding). **READ THIS FIRST.** The DP4
-integrity picture changed materially today: the throughput numbers were **edge-limited**,
-not engine-limited. Tests are **no longer paused** (Alon is done). Details below.
+Rewritten 2026-07-26 (DP4 resolved). **READ THIS FIRST.** The DP4 throughput
+question is now **resolved**: the old numbers were **edge-limited** (a single Argus
+front-door node), not engine-limited. With the edge scaled to 10 nodes we
+re-measured cleanly. The corrected brief is written; tests are cleared.
 
 ## 🟢 Current state
 
-- **Tests are cleared.** Alon finished his Hydra work. We can drive load again.
-- **Nothing is running.** Verified: no `dp4driver`, 0 engine connections, engines on the
-  small starter policy, console down.
-- **The big finding today:** the edge (Argus) was the throughput ceiling — see next section.
+- **Tests cleared** (Alon done with Hydra). **10 Argus online** both sides.
+- **Box idle**: no dp4driver, 0 engine connections; engines restored to the
+  **starter policy** (`demos/policies/starter-known-values.nol`) so the redaction
+  console works.
+- **DP4 brief rewritten** → `docs/DP4-THROUGHPUT-BRIEF.md` (source doc). **Jamie
+  re-renders the PDF before any re-share** — it supersedes the prior version wholesale.
 
-## 🔑 THE ARGUS FINDING (today's headline — this reframes DP4)
+## 🔑 THE RESOLVED DP4 STORY (what changed and the numbers)
 
-Alon revealed there had been only **a single Argus edge node per engine** during all our
-DP4 runs. Argus is the SaaS front door (terminates TLS :443/:444 → PrivateLink → Iris QUIC
-→ Apollo → engine); it does no matching, it's a proxy. The fleet was then scaled to **10
-Argus**. We re-ran the exact `rulecount-live.sh` sweep (same tool + conditions as the
-single-Argus CSVs) as a clean A/B. Result:
+**The old ~28.6k/26.3k "~1.09× close" numbers were measured through a SINGLE Argus
+edge node** (the HTTPS front door), which caps ~27k and pinned both engines there.
+Scaling to **10 Argus** and re-running the identical test:
 
-**Small payload, conc 256, 3 reps. 1 Argus → 10 Argus:**
+- **Rule-count sweep (conc 256, 5 reps, 8k rules):** Themis (FPGA) **~76.6k** vs
+  Aergia (RE2) **~56.9k** = **1.35×**. Aergia gently declines with rules
+  (60.8→59.1→56.9k across 2k/4k/8k); Themis flat-high. *(Themis@2k was noisy from
+  5xx bursts — clean reps ~75k; don't cherry-pick it.)*
+- **The ~8.4k "collapse" is GONE** — 5 reps at 8k held ~57k, no crater. It was the
+  single edge node saturating, not RE2. **Integrity item 1 closed.**
+- **Concurrency push (8k rules, 256/512/1024):** Themis **77k → 115k → 146k**;
+  Aergia **57k → 63k → 68k**. **Gap widens 1.35× → 1.83× → 2.15×.**
+  - **Aergia walls at ~68k = a real ENGINE ceiling** (driver was only ~47% busy).
+  - **Themis hit 146k where the DRIVER box maxed (~84% CPU), not the FPGA** — its
+    true ceiling is higher than one load box can find.
+- **Latency:** conc 256 P99 ~5.8ms (Themis) / ~7.9ms (Aergia). The old "19ms P99"
+  was single-edge queuing — gone.
+- **Errors = exclusively HTTP 5xx** (server-side backpressure). Driver instrumented
+  to classify errors: dial/timeout/reset all **zero**; port exhaustion **ruled out**
+  by direct socket measurement (keep-alive held 256 conns, TIME_WAIT 0). 5xx is
+  <0.1% typical, rises under load, heavier on the Themis path (it drives more
+  throughput downstream). **OPEN: where do the 5xx originate (edge vs backend)?** —
+  Jamie is asking **Alon** for server-side logs of the run window.
+- **Deploy ceiling:** 12k-rule policy **refused on Themis**; 8k deploys clean.
 
-| rules | Themis 1→10 Argus | Aergia 1→10 Argus | Themis/Aergia @10 |
-|---|---|---|---|
-| 2000 | 27.3k → **72.4k** (2.6×) | 26.0k → **58.9k** (2.3×) | 1.23× |
-| 4000 | 27.9k → **72.9k** (2.6×) | 26.2k → **57.0k** (2.2×) | 1.28× |
-| 8000 | 28.6k → **76.5k** (2.7×) | 26.4k → **55.6k** (2.1×) | **1.38×** |
+Evidence (all tracked, `artifacts/evidence/`): `rulecount-10argus-clean.csv`,
+`concpush-8k-themis-10argus.csv`, `concpush-8k-aergia-10argus.csv`, plus the earlier
+`rulecount-10argus-jul25-partial.csv` and the single-Argus baselines
+(`rulecount-jul24-cliff.csv`, `rulecount-jul25-clean.csv`).
 
-(10-Argus figures are per-rule-count medians of 3 reps; raw in
-`artifacts/evidence/rulecount-10argus-jul25-partial.csv`.)
+## Durable spine (unaffected by the edge finding)
 
-**Four conclusions, all honest and all *good for us*:**
+- **Efficiency:** ~8-core structural software tax (RE2 lexers) the FPGA does in
+  silicon; both data planes poll-mode (constant cost). Per-request multiplier to be
+  **re-measured at the corrected higher throughput** (will favor the FPGA more).
+  Measured on the engine hosts, so the edge finding doesn't touch it.
+- **DP1–DP3 correctness** (oracle-verified) — unaffected.
 
-1. **The single Argus was the real throughput ceiling.** Both engines were pinned at
-   ~26–28k with one front door; both jumped ~2.1–2.7× with ten. The suspiciously flat,
-   rule-count-independent numbers were the *edge*, not the engines.
-2. **The ~8.4k Aergia@8k "collapse" is explained and GONE.** With 10 Argus, Aergia@8k is a
-   healthy 55.8k/54.5k/55.6k, p99 ~7.9ms, no crash. The collapse was a single edge node
-   saturating intermittently (bistable), NOT an RE2/engine fault. **This closes integrity
-   item 1** — the honest story is "edge-node saturation," provable by the A/B.
-3. **The true engine gap is bigger than we reported and it WIDENS with rule count.**
-   Edge-masked, the engines looked ~1.09× "close." Unmasked: 1.23× → 1.28× → 1.38× as rules
-   climb. Themis holds flat; Aergia softens (RE2 DFA cost). This is the *original FPGA
-   thesis* (`rulecount-live.sh`'s reason for existing) finally visible — the single Argus had
-   been erasing exactly the effect we most wanted to show.
-4. **Latency was edge queueing.** p99 dropped from ~17–19ms to ~5.7ms (Themis) / ~7.9ms
-   (Aergia). This answers the founder's "no way 19ms P99 for SW" — the 19ms was the single
-   front door queuing, and it's gone once the edge is scaled.
+## Hydra — SET ASIDE (Jamie's call, 2026-07-26)
 
-**Caveat / new confound — the driver box is now the next ceiling.** At 70k+ rps the single
-driver host (`nol8-demo` / data-streamer, GOMAXPROCS=8) hit **ephemeral-port exhaustion**:
-errors climbed *within* each rule-count's reps (Themis 48→75→261; resets each new rule
-count) and the run ultimately died with **"Can't assign requested address"**. So the
-10-Argus numbers are **floors** (engines may go higher) and the later-rep error counts are a
-**driver artifact, not an engine fault**. Must be fixed before these numbers are publishable.
+Alon's Hydra dashboard showed Ares(=FPGA?) 120k rps / Aergia 1.4k under 160k
+*offered* open-loop load — that's **congestion collapse under 3× overload**, a
+different axis from our matched-load numbers, NOT an "87× throughput" claim. More
+importantly: **a load generator is not a customer POC** (customers send their own
+data). Decision: don't build on Hydra; focus on self-contained tooling + a
+Bring-Your-Own-Data POC. (Confirm with Alon that "Ares" == our Themis.) See memory
+[[avoid-hydra-grafana-dependency]].
 
-**Run status:** the sweep got 2000/4000/8000 complete for BOTH engines (3 reps each), then
-died before 12000 — a **VPN flap on the Mac** dropped the ssh that held it (no PTY, so the
-remote kept writing the CSV a while after stdout broke; that's why 8000 fully landed). Data
-preserved to `artifacts/evidence/rulecount-10argus-jul25-partial.csv` (Mac + EC2).
+## Next steps (in order)
 
-## ☀️ PLAN FOR THE MORNING (start fresh, in order)
-
-1. **Fix driver-side port exhaustion FIRST** (so error counts are clean and the ceiling is
-   real, not artificial). On `nol8-demo`: widen `net.ipv4.ip_local_port_range`, lower
-   `tcp_fin_timeout` / enable `tcp_tw_reuse`, `ulimit -n` already 65536. Confirm the driver
-   reuses connections (HTTP/1.1 keep-alive — it does; the churn is from cap-* distinct
-   bodies + high rps). Goal: drive 70k+ rps with ~0 errors.
-2. **Use a durable run harness** — the ssh-foreground-held-by-background-task died on a VPN
-   flap. Launch the sweep inside **tmux/screen on the box** (or nohup) so a laptop/VPN blip
-   can't kill it. Reattach to read progress.
-3. **Re-run the full clean sweep:** rule counts `2000 4000 8000 12000` (add 12000 — the
-   missing point), **5 reps**, conc 256, save raw straight to `artifacts/evidence/` as
-   `rulecount-10argus-clean.csv`. This is the definitive 10-Argus dataset.
-4. **Confirm the collapse stays gone** across all 8k reps (item 1 fully closed with N≥5).
-5. **Then the true-ceiling question:** with the port fix in, push concurrency (256 → 512 →
-   1024) and/or add a second driver box to find where the *engines* actually top out (right
-   now we only know they're ≥70k/≥55k). This tells us the real headroom.
-6. **Rewrite the DP4 brief** with the corrected, stronger story:
-   - throughput was edge-limited; with a scaled edge the engines do ~72k / ~57k+,
-   - the real engine ratio is ~1.23–1.38× and **widens with rule count** (FPGA flat, RE2
-     slopes) — lead with this, it's the product thesis,
-   - the 8.4k "collapse" was single-edge-node saturation, now resolved,
-   - the 19ms P99 was edge queueing, now ~6–8ms,
-   - keep the efficiency story (below) as the durable spine.
-   Then **Jamie re-renders the PDF** before any re-share. (Prior brief had a "no cliff,
-   transient" claim that was wrong; this supersedes it with a *better* answer.)
-7. **Items 2 & 4:** reconcile stale DEMO-NOTES.md (17,719→ correct fair numbers; 50k/5k→
-   80k/4k).
-8. **Item 3:** efficiency-demo.sh reps + spread + under-load variant (unaffected by the edge
-   — it's measured on the engine hosts directly).
-
-## What still holds regardless (the durable spine)
-
-- **Efficiency is the robust story and is edge-independent.** Apollo poll-mode ~11.3 cores
-  on both; Themis matches in silicon (0 host cores) vs Aergia ~8.2 RE2 lexer cores → ~8-core
-  software tax, ~1.9× host CPU/req, constant under load. Measured on the engine hosts, so the
-  Argus finding doesn't touch it. FPGA verified engaged (AFI, uio0, f2.6xlarge).
-- **DP1–DP3 correctness** (oracle-verified replacement, parity, payload) — unaffected.
-
-## What this is / topology
-
-Demo/validation env: **Themis** (NOL8 FPGA literal matcher, `:443`) vs **Aergia** (Google
-RE2 software incumbent, `:444`). NOL8 = **deterministic literal replacement only** (listMatch,
-case-insensitive); NOT route/block/mask/enforce. Same policy + data + driver to every engine;
-report divergence honestly, never rig. Path: **Argus** SaaS edge (`tenant001-v1demo.nol8.net`
-`:443`/`:444`, now **10 nodes**) → Iris QUIC `:8443` → **Apollo** DPDK data plane → backend
-(FPGA regexdev on themis / RE2 lexers on aergia). policyd/control `:8444`. 1 MB request cap.
-Jamie has the Argus config URL/login + a troubleshooting doc.
+1. **Commit** the brief + driver instrumentation + evidence (announce first). *(in
+   progress this turn)*
+2. **Build the BYO-data POC flow** on the console: customer brings a sample of their
+   docs + governed-value list → we build the policy → run their docs through both
+   engines, oracle-verify against their own policy → report throughput/latency on
+   *their* corpus + the CPU-cost story. Demo-flow: generate→policy→deploy(confirm
+   applied)→run→results. This is the buyer-facing proof Hydra can't be.
+3. **5xx source** — ingest Alon's server logs; pin edge vs backend; fold into brief.
+4. **Efficiency re-measure** under corrected load (efficiency-demo.sh reps + spread +
+   under-load variant) → update the per-request multiplier in the brief.
+5. **Reconcile stale DEMO-NOTES.md** (old 17,719 / 50k-5k numbers).
+6. **Re-render + re-share the corrected brief** (Jamie).
+7. Later: shareable static dashboard (Artifact); full agentic demo (mesh + pre-index).
 
 ## Hosts (SSH)
 
 | host | what | reach |
 |---|---|---|
-| `nol8-demo` | driver/console box (aka data-streamer), m7a.2xlarge, 10.8.10.40 | reaches engines :443/:444; Go + venv + dp4driver. **Now the throughput ceiling (port exhaustion) at 70k+ rps.** |
+| `nol8-demo` | driver/console box (aka data-streamer), m7a.2xlarge, GOMAXPROCS=8, 10.8.10.40 | reaches engines :443/:444; Go + venv + dp4driver. **Becomes the throughput limit ~146k+ (driver CPU).** |
 | `themis-demo` | FPGA backend, f2.6xlarge, 24 cores, AFI loaded | Mac only |
 | `aergia-demo` | RE2 backend, 32 cores | Mac only |
-| `hydra-demo` | obs/fleet dashboard (Alon's box) | my key NOT authorized |
+| `hydra-demo` | Alon's load-gen + obs | my key NOT authorized; set aside |
 
-Repo: Mac `~/Code/nol8/nol8-validation`, EC2 `/opt/nol8/nol8-validation`. **results/ is
-gitignored** (raw CSVs there don't sync/reach repo — copy evidence to `artifacts/evidence/`,
-which IS tracked). Announce before git. Brand guide `~/Code/nol8/nol8-brand-guide` (charcoal
-`#404040`, green `#33B046`, Google Sans, dark web mode).
+Repo: Mac `~/Code/nol8/nol8-validation`, EC2 `/opt/nol8/nol8-validation`. **results/
+is gitignored** — copy raw to `artifacts/evidence/` (tracked). Argus config: Jamie
+has the URL/login (fleet scales; was 1 overnight, now 10). Brand guide
+`~/Code/nol8/nol8-brand-guide` (charcoal `#404040`, green `#33B046`, Google Sans).
 
-## Operational lessons from today (don't repeat)
+## Operational lessons (don't repeat)
 
-- **ssh-foreground held by a background task dies on a VPN/laptop flap** (no PTY → remote
-  lingers then dies). Use **tmux/screen/nohup on the box** for any run > a minute.
-- **`nohup … &` and `cat > file <<EOF` over ssh get blocked by the auto-mode classifier.**
-  Write scripts locally + scp, or run via tmux; don't fight the classifier.
-- **Copy raw CSVs to `artifacts/evidence/` immediately after a run**, not as a final step —
-  today's run died before its copy step and the data was almost stranded on EC2.
+- **Run anything >1 min inside `tmux` on the box** — ssh-foreground-held-by-a-
+  background-task dies on a VPN flap (killed a run last night). tmux survived today.
+- **The auto-mode classifier blocks `nohup … &` and `cat > file <<EOF` over ssh** —
+  write scripts locally + `scp` them, launch via tmux.
+- **Copy raw CSVs to `artifacts/evidence/` as part of the run**, not after.
+- **The driver (`demos/benchmark/datapoint4/go/main.go`) now classifies errors** —
+  prints an `errbreak:` line (dial/timeout/reset/eof/http4xx/http5xx/other) whenever
+  a cell has errors. CSV schema unchanged (console/build-rulecount.py still parse).
 
-## Demo console — BUILT, PARKED (resume after the brief rewrite)
+## Console — BUILT, PARKED → resume as the BYO-POC (step 2)
 
-`demos/showcase/console/` (stdlib server + on-brand dark UI on nol8-demo, `bash
-console/run.sh`, tunnel `ssh -f -N -L 8770:localhost:8770 nol8-demo`). Catalog (18 prompts),
-both-engines side-by-side redaction, corpus batch, scale mode, efficiency panel. **The scale
-number should be re-based on the 10-Argus reality once the clean sweep is in.** Demo-flow the
-UI should walk: generate data→show sample; generate policy→show slice; deploy→confirm applied;
-run; results. Also `demos/showcase/` CLI tour (redact/usecases, oracle-verified) + RUNBOOK.
-
-## Next-next (agenda, after DP4 is buttoned up)
-
-- Shareable static dashboard (Artifact) of the DP4 story.
-- Full agentic demo (mesh + pre-index repos) across the 3 use cases.
+`demos/showcase/console/` (stdlib server + on-brand dark UI on nol8-demo). Scale
+numbers should be re-based on the corrected 10-Argus reality. Resume it as the
+BYO-data POC per step 2. Also `demos/showcase/` CLI tour + RUNBOOK.
 
 ## Memories to respect
 
 Substitution-not-enforcement; benchmark-integrity-no-rigging; announce-before-git;
-demos-must-be-SA-runnable; avoid Hydra/Grafana dependency (self-contained tooling);
+demos-must-be-SA-runnable; avoid-Hydra/Grafana; argus-edge-was-throughput-ceiling;
 "update the project" = rewrite this file wholesale.

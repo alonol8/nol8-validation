@@ -1,0 +1,4 @@
+engine,concurrency,payload,records_used,avg_body_bytes,duration_s,completed,errors,rps,throughput_mib_s,p50_ms,p95_ms,p99_ms,p999_ms,min_ms,max_ms,mean_ms,tail_overflow
+aergia,256,small,4000,2580,15.0,855832,0,57055.5,140.40,4.460,6.575,7.710,8.775,1.080,228.539,4.487,0
+aergia,512,small,4000,2580,15.0,946506,43,63100.4,155.27,7.710,12.680,14.576,16.424,1.067,236.902,7.985,0
+aergia,1024,small,4000,2580,15.0,1017820,47,67854.7,166.97,14.431,24.212,27.831,30.743,1.477,243.856,14.966,0
