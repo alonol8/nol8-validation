@@ -48,6 +48,14 @@ Verifying the whole corpus, or fanning out per-doc parallel calls, reintroduces 
 flakiness. The full corpus IS exercised — in the load step, via the Go driver, which
 Aergia tolerates. Leave the correctness sampling + per-engine-sequential model alone.
 
+**Correctness is BYTE-FOR-BYTE, not a substring check (do NOT revert it).** Each doc
+is adjudicated against the framework's independent oracle
+(`framework/policy/oracle.py`): `exact = engine_output == oracle_output`. A substring
+"token present / literal gone" check passes when the engine puts the token in the
+wrong position, corrupts surrounding text, or inserts content — so it is not a
+correctness claim we can make to a customer. The denominator is always visible:
+"N of M documents, byte-for-byte." Do not swap this back to counting redacted values.
+
 ## What the page is
 
 A dependency-free (Python stdlib) single-page console on `nol8-demo` that drives the
@@ -74,8 +82,12 @@ All POST, JSON in/out. Errors come back as `{"error": "..."}` with a non-200.
   `{rule_count, categories:[{token,label,count}], dropped:[{value,why}],
   policy_preview:[str], docs, avg_bytes, doc_sample}`
 - `POST /api/byo/deploy` → `{status:{engine:{state,label}}, settled}`
-- `POST /api/byo/correctness` → `{rows[], totals:{engine:{verified,in_scope,pct,label}},
-  parity_ok, parity_total}`
+- `POST /api/byo/correctness` → `{rows[], totals:{engine:{exact,docs,label}},
+  parity_ok, parity_total, disagreements[], sampled, total}`. Per row:
+  `engines:{engine:{exact:bool, in_scope}}` or `{error}`. `exact` = byte-for-byte
+  match to the oracle. `disagreements[]` = `{doc, engine, label, oracle, engine_out}`
+  (truncated excerpts) where a substring check would pass but the oracle fails.
+  Show `exact/docs` per engine and `sampled of total` — never a bare percentage.
 - `POST /api/byo/load` `{engine?, concurrency, duration}` → `{engines:{engine:{label,
   cells:[{payload,rps,p99,errors,mib_s}]}}, distinct_docs, warn?, ratio?}`.
   **Pass `engine` to drive ONE engine** (the UI calls it twice for live progress).

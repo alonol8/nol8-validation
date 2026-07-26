@@ -33,6 +33,13 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 ROOT = Path(__file__).resolve().parents[3]          # repo root
+sys.path.insert(0, str(ROOT))
+# The correctness step adjudicates engine output against the framework's
+# independent oracle (byte-for-byte), the SAME one the CLI POC and verify-oracle
+# use — not a substring check.
+from framework.policy.oracle import (  # noqa: E402
+    build_matcher, oracle_output, parse_policy, substring_pass,
+)
 HERE = Path(__file__).resolve().parent
 BRAND = ROOT / "demos" / "benchmark" / "brand"
 POLICY = ROOT / "demos" / "policies" / "starter-known-values.nol"
@@ -303,7 +310,8 @@ def deploy_policy() -> dict:
 # ---- Bring-Your-Own-Data POC ------------------------------------------------
 # A load generator is not a POC. This lets an SA paste a customer's own governed
 # values + documents and prove, live: (1) correct redaction on THEIR data,
-# oracle-verified on both engines; (2) the CPU-cost story; (3) throughput on
+# adjudicated BYTE-FOR-BYTE against the framework's independent oracle on both
+# engines (not a substring check); (2) the CPU-cost story; (3) throughput on
 # THEIR corpus. Mirrors demos/showcase/byo-poc/byo_poc.py, driven from the UI.
 
 def _byo_token(name: str, used: set) -> str:
@@ -350,21 +358,6 @@ def _byo_render(cats) -> str:
             lines.append(f'"{v.replace(chr(34), chr(92) + chr(34))}" -> "{token}";')
         lines.append("")
     return "\n".join(lines)
-
-
-def _byo_pairs():
-    return policy_pairs_from(BYO_POLICY)
-
-
-def policy_pairs_from(path):
-    pairs = []
-    for line in Path(path).read_text(encoding="utf-8").splitlines():
-        if line.lstrip().startswith("#"):
-            continue
-        m = POLICY_RULE.match(line)
-        if m:
-            pairs.append((m.group("lit"), m.group("tok")))
-    return pairs
 
 
 def _byo_docs():
@@ -484,7 +477,12 @@ def _verify_engine(engine, idxs, docs):
 def byo_correctness(engines=("themis", "aergia"), limit=12) -> dict:
     if not BYO_POLICY.exists() or not BYO_CORPUS.exists():
         return {"error": "build + deploy first"}
-    pairs, docs = _byo_pairs(), _byo_docs()
+    try:
+        rules = parse_policy(BYO_POLICY)
+    except ValueError as exc:
+        return {"error": f"policy parse: {exc}"}
+    matcher = build_matcher(rules)
+    docs = _byo_docs()
     total = len(docs)
     # Verify a representative, evenly-spaced SAMPLE live (default `limit`). The
     # software engine has intermittent multi-second stalls that make verifying a
@@ -505,13 +503,17 @@ def byo_correctness(engines=("themis", "aergia"), limit=12) -> dict:
             for f, e in futs.items():
                 for i, v in f.result().items():
                     out[(i, e)] = v
+    EXCERPT = 160  # customer text: keep only enough to show a defect, never the whole doc
     rows = []
-    totals = {e: {"verified": 0, "in_scope": 0} for e in engines}
+    totals = {e: {"exact": 0, "docs": 0} for e in engines}
+    disagreements = []  # substring PASSED but oracle FAILED (the old console's blind spot)
     parity_ok = parity_total = 0
     for i in idxs:
         original = docs[i]
-        in_scope = [(l, t) for l, t in pairs if l and l in original]
-        occ = sum(original.count(l) for l, _ in in_scope)
+        expected = oracle_output(original, matcher, rules)  # the one correct output
+        substr_pairs = [(l, t) for l, t in rules.items() if l in original]
+        in_scope = len(substr_pairs)
+        occ = sum(original.count(l) for l, _ in substr_pairs)
         mb = len(original.encode("utf-8"))
         outs, reng = {}, {}
         for e in engines:
@@ -520,23 +522,26 @@ def byo_correctness(engines=("themis", "aergia"), limit=12) -> dict:
                 reng[e] = {"error": (str(r)[:120] if r else "no result")}; continue
             processed = r
             outs[e] = processed
-            ver = sum(1 for l, t in in_scope if l not in processed and t in processed)
-            totals[e]["verified"] += ver
-            totals[e]["in_scope"] += len(in_scope)
-            reng[e] = {"verified": ver, "in_scope": len(in_scope), "ok": ver == len(in_scope)}
+            exact = processed == expected  # byte-for-byte: right tokens, right places, nothing else touched
+            totals[e]["docs"] += 1
+            totals[e]["exact"] += 1 if exact else 0
+            if substring_pass(processed, substr_pairs) and not exact:
+                disagreements.append({"doc": i + 1, "engine": e, "label": ENGINES[e]["label"],
+                                      "oracle": expected[:EXCERPT], "engine_out": processed[:EXCERPT]})
+            reng[e] = {"exact": exact, "in_scope": in_scope}
         if len(outs) == 2:
             parity_total += 1
             parity_ok += 1 if len(set(outs.values())) == 1 else 0
-        rows.append({"doc": i + 1, "bytes": mb, "in_scope": len(in_scope),
+        rows.append({"doc": i + 1, "bytes": mb, "in_scope": in_scope,
                      "density": round(occ / (mb / 1024), 1) if mb else 0.0,
                      "engines": reng,
                      "identical": len(outs) == 2 and len(set(outs.values())) == 1})
     return {
         "rows": rows,
-        "totals": {e: {**totals[e], "label": ENGINES[e]["label"],
-                       "pct": round(100 * totals[e]["verified"] / totals[e]["in_scope"], 1)
-                       if totals[e]["in_scope"] else 0.0} for e in engines},
+        "totals": {e: {"label": ENGINES[e]["label"], "exact": totals[e]["exact"],
+                       "docs": totals[e]["docs"]} for e in engines},
         "parity_ok": parity_ok, "parity_total": parity_total,
+        "disagreements": disagreements,
         "sampled": len(idxs), "total": total,
     }
 

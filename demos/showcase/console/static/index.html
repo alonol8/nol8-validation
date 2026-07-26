@@ -505,17 +505,23 @@ async function byoVerify(){
   $('#byoErr').hidden=true;const btn=$('#byoVerify');byoBusy(btn,'Verifying on both engines…');
   try{
     const d=await byoPost('/api/byo/correctness',{});
+    // Byte-for-byte against the oracle: ✓ means the engine produced exactly the
+    // correct output (right tokens, right positions, nothing else altered).
     const cell=(r,e)=>{const v=r.engines[e];if(!v)return '—';if(v.error)return '<span class="bad">ERR</span>';
-      return v.ok?`<span class="ok">${v.verified}/${v.in_scope} ✓</span>`:`<span class="bad">${v.verified}/${v.in_scope} ✗</span>`;};
+      return v.exact?'<span class="ok">✓ exact</span>':'<span class="bad">✗ mismatch</span>';};
     const rowHtml=r=>`<tr><td class="num">${r.doc}</td><td class="num tnum">${r.bytes}</td><td class="num tnum">${r.in_scope}</td><td class="num tnum">${r.density}</td><td>${cell(r,'themis')}</td><td>${cell(r,'aergia')}</td><td>${r.identical?'<span class="ok">✓</span>':'<span class="bad">✗</span>'}</td></tr>`;
     const CAP=14;
     const rows=d.rows.slice(0,CAP).map(rowHtml).join('')+
       (d.rows.length>CAP?`<tr><td colspan="7" class="muted">… and ${d.rows.length-CAP} more documents — see the totals below</td></tr>`:'');
-    const tot=e=>`${d.totals[e].verified}/${d.totals[e].in_scope} (${d.totals[e].pct}%)`;
-    const allok=d.totals.themis.pct===100&&d.totals.aergia.pct===100;
-    const sampNote=(d.sampled<d.total)?`<div class="samplenote">Verified a representative <b>${d.sampled}</b> of <b>${d.total}</b> documents live (evenly sampled). The full ${d.total}-document corpus is driven in the load test below.</div>`:'';
+    // Honest denominator: documents matching the oracle byte-for-byte, out of the
+    // documents actually adjudicated on that engine — never a bare percentage.
+    const tot=e=>`${d.totals[e].exact}/${d.totals[e].docs} exact`;
+    const allok=d.totals.themis.exact===d.totals.themis.docs&&d.totals.themis.docs>0
+             &&d.totals.aergia.exact===d.totals.aergia.docs&&d.totals.aergia.docs>0;
+    const sampNote=(d.sampled<d.total)?`<div class="samplenote">Verified a representative <b>${d.sampled}</b> of <b>${d.total}</b> documents live, byte-for-byte (evenly sampled). The full ${d.total}-document corpus is driven in the load test below.</div>`:`<div class="samplenote">Verified <b>all ${d.total}</b> documents live, byte-for-byte against an independent oracle.</div>`;
+    const disNote=(d.disagreements&&d.disagreements.length)?`<div class="err" style="margin-top:10px">⚠ ${d.disagreements.length} result(s) would PASS a substring check but FAIL the oracle — e.g. doc ${d.disagreements[0].doc} on ${esc(d.disagreements[0].label)}:<br><code>oracle: ${esc(d.disagreements[0].oracle)}</code><br><code>engine: ${esc(d.disagreements[0].engine_out)}</code></div>`:'';
     $('#byoVerifyOut').innerHTML=sampNote+`<table><thead><tr><th class="num">doc</th><th class="num">bytes</th><th class="num">in-scope</th><th class="num">matches/KB</th><th>Themis</th><th>Aergia</th><th>identical</th></tr></thead><tbody>${rows}</tbody></table>`+
-      `<div class="compare"><span>Themis <b>${tot('themis')}</b></span><span>Aergia <b>${tot('aergia')}</b></span><span class="${d.parity_ok===d.parity_total&&allok?'ident':'bad'}">${d.parity_ok}/${d.parity_total} documents identical on both engines</span></div>`;
+      `<div class="compare"><span>Themis <b>${tot('themis')}</b></span><span>Aergia <b>${tot('aergia')}</b></span><span class="${d.parity_ok===d.parity_total&&allok?'ident':'bad'}">${d.parity_ok}/${d.parity_total} documents identical on both engines</span></div>`+disNote;
     $('#byoLoad').disabled=false;byoDone(btn,true);
   }catch(e){byoFail(e);byoDone(btn);}
 }
