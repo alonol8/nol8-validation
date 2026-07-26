@@ -4,22 +4,34 @@
 A deploy is fire-and-forget (ISSUE-003), there is no runtime health signal
 (ISSUE-007), and no policy read-back. So "the engine is flat across rule count"
 is indistinguishable from "the policy never changed on the engine." This probe
-closes that gap: after deploying policy N it sends a document containing a literal
-that is UNIQUE to N (present in N, absent from the previously deployed policy) and
-asserts the engine redacts it. A stale policy cannot pass, because it never held
-that literal.
+closes that gap: after deploying policy N it sends documents containing literals
+UNIQUE to N (present in N, absent from the previously deployed policy) and checks
+the engine's output BYTE-FOR-BYTE against the independent oracle. A stale policy
+cannot pass, because it never held those literals — its output for the probe
+document differs from N's oracle output.
+
+Byte-for-byte, not substring: a "token appears / literal absent" check passes on a
+stale policy whose literal is a substring of the probe literal (it produces the
+token plus a leftover fragment). Whole-document equality against oracle_output
+does not. See review/findings/006.
+
+Because token-truncation attribution is unresolved (ISSUE-005: the runtime
+truncates a replacement token, observed at 15 chars, and it is not yet established
+which engine(s) do so), a pass is accepted against EITHER the full-token oracle
+output OR its 15-char-truncated variant, and which one matched is recorded — that
+is free evidence toward the truncation question.
 
 It also reports |set(N) - set(prev)| per cell, pass or fail. If that difference is
 empty or trivial, the rule-count sweep is not varying what we think it varies —
 a finding on its own that would invalidate the trend claim, independent of
 everything else.
 
-Reuses the framework's ONE policy parser (framework.policy.oracle.parse_policy).
+Reuses the framework's ONE parser + oracle (framework.policy.oracle).
 
 Exit non-zero if any named engine fails the probe, so the caller aborts the cell.
 
 Usage:
-  # rule-count sweep: unique-to-N literal, diff against the prior cell's policy
+  # rule-count sweep: literals unique to N, diff against the prior cell's policy
   deploy_probe.py --policy N.nol --prev (N-1).nol --engines themis,aergia
   # single-policy run: no previous, any literal must redact
   deploy_probe.py --policy scale.nol --engines themis
@@ -36,31 +48,51 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(REPO_ROOT))
-from framework.policy.oracle import parse_policy  # noqa: E402
+from framework.policy.oracle import build_matcher, oracle_output, parse_policy  # noqa: E402
 
-# The runtime truncates a replacement token to 15 chars (ISSUE-005), and the two
-# engines were observed to differ on this: Themis emits the full token, Aergia the
-# 15-char prefix. So the liveness signal is "the literal was redacted" plus "the
-# token's first 15 chars appear" — never the full token, which long tokens never
-# yield on Aergia.
+# ISSUE-005: the runtime truncates a replacement token, observed at 15 chars.
+# Which engine(s) apply it is unresolved (review/findings/006), so the probe is
+# deliberately truncation-agnostic — it accepts the full-token oracle output OR
+# the 15-char-truncated variant, and records which matched. It never asserts a
+# per-engine truncation behaviour.
 MAX_TOKEN_LEN = 15
 
 
-def probe_plan(cur: dict[str, str], prev: dict[str, str]) -> tuple[str | None, str | None, int]:
-    """Choose the literal to probe with.
+def _collides(lit: str, others: set[str]) -> bool:
+    """True if `lit` has a substring relationship with any literal in `others`."""
+    return any(o != lit and (o in lit or lit in o) for o in others)
 
-    Returns (probe_literal, token, new_count). Prefer a literal UNIQUE to `cur`
-    (present in cur, absent from prev) so a stale policy cannot pass; fall back to
-    any literal from cur when there is no previous policy or the two share no
-    difference. Selection is deterministic (shortest then lexicographic) so a run
-    is reproducible. new_count is |set(cur) - set(prev)|, reported regardless.
+
+def probe_plan(cur: dict[str, str], prev: dict[str, str], count: int = 4) -> tuple[list[tuple[str, str]], int]:
+    """Choose the literals to probe with.
+
+    Returns (probe_pairs, new_count). Selection, in order of preference:
+      - literals UNIQUE to `cur` (present in cur, absent from prev) so a stale
+        policy cannot pass;
+      - with NO substring relationship to any literal in prev (defence in depth —
+        byte-for-byte already defeats the stale-substring case, but skipping these
+        keeps the probe document unambiguous);
+      - spread across the sorted set (so a partial deploy that lands only part of
+        the ruleset is more likely to be caught), up to `count` of them; for a
+        single probe (count<=1) the longest such literal, least collision-prone.
+    Falls back to any literals from cur when there is no previous policy or no
+    usable unique literal remains. new_count = |set(cur) - set(prev)|, reported
+    regardless.
     """
     new = [lit for lit in cur if lit not in prev]
-    candidates = new if new else list(cur)
-    if not candidates:
-        return None, None, len(new)
-    probe_lit = sorted(candidates, key=lambda s: (len(s), s))[0]
-    return probe_lit, cur[probe_lit], len(new)
+    new_count = len(new)
+    safe = [lit for lit in new if not _collides(lit, set(prev))]
+    pool = safe or new or list(cur)
+    if not pool:
+        return [], new_count
+    if count <= 1:
+        picks = [max(pool, key=lambda s: (len(s), s))]
+    else:
+        ordered = sorted(pool)
+        n = min(count, len(ordered))
+        idxs = sorted(set(round(k * (len(ordered) - 1) / (n - 1)) for k in range(n)))
+        picks = [ordered[i] for i in idxs]
+    return [(lit, cur[lit]) for lit in picks], new_count
 
 
 def call(endpoint: str, token: str, message: str, timeout: float = 20.0) -> str:
@@ -78,56 +110,75 @@ def main() -> int:
     ap.add_argument("--policy", required=True, help="the policy just deployed (N)")
     ap.add_argument("--prev", default="", help="the previously deployed policy (N-1), if any")
     ap.add_argument("--engines", default="themis,aergia")
+    ap.add_argument("--count", type=int, default=4, help="literals to probe, spread across the new set")
     ap.add_argument("--attempts", type=int, default=5, help="probe retries per engine (propagation lag)")
     ap.add_argument("--delay", type=float, default=2.0, help="seconds between retries")
     args = ap.parse_args()
 
     cur = parse_policy(Path(args.policy))
     prev = parse_policy(Path(args.prev)) if args.prev and Path(args.prev).exists() else {}
-    probe_lit, token, new_count = probe_plan(cur, prev)
+    picks, new_count = probe_plan(cur, prev, args.count)
 
-    print(f"   probe: |policy|={len(cur)}  |new vs prev|={new_count}", flush=True)
+    print(f"   probe: |policy|={len(cur)}  |new vs prev|={new_count}  probing {len(picks)} literal(s)", flush=True)
     if prev and new_count == 0:
         print("   probe: WARNING set(N)-set(prev) is EMPTY — this cell does not vary the "
               "ruleset from the previous one; the rule-count trend is not measuring what "
               "it claims here.", flush=True)
-    if probe_lit is None:
+    if not picks:
         print("   probe: FAILED — policy has no literals to probe", flush=True)
         return 1
-
-    doc = f"deploy probe: {probe_lit} .end"
-    engines = [e.strip() for e in args.engines.split(",") if e.strip()]
-    endpoints = {"themis": os.environ.get("THEMIS_ENDPOINT", ""),
-                 "aergia": os.environ.get("AERGIA_ENDPOINT", "")}
     if not prev:
         basis = "any-literal (first cell, no prev)"
     elif new_count:
         basis = "unique-to-N"
     else:
         basis = "any-literal (EMPTY DIFF)"
+
+    # The engine applies the whole policy, so compute the oracle over the whole
+    # policy (not just the probe literal) — anything else in the document that
+    # happens to be a policy literal is accounted for. Two variants because the
+    # truncation attribution is unresolved.
+    matcher = build_matcher(cur)
+    rules_trunc = {lit: tok[:MAX_TOKEN_LEN] for lit, tok in cur.items()}
+
+    engines = [e.strip() for e in args.engines.split(",") if e.strip()]
+    endpoints = {"themis": os.environ.get("THEMIS_ENDPOINT", ""),
+                 "aergia": os.environ.get("AERGIA_ENDPOINT", "")}
     ok = True
     for e in engines:
-        # Retry a bounded window: a just-deployed policy can still be propagating
-        # to the data plane (ISSUE-003, no health signal to wait on). A genuinely
-        # stale policy never gains the unique literal, so it fails every attempt —
-        # the retry only rescues propagation lag, it does not mask staleness.
-        redacted, detail = False, ""
-        for attempt in range(args.attempts):
-            if attempt:
-                time.sleep(args.delay)
-            try:
-                resp = call(endpoints.get(e, ""), os.environ.get(f"{e.upper()}_TOKEN", ""), doc)
-            except Exception as exc:  # noqa: BLE001
-                detail = f"request error: {str(exc)[:100]}"
-                continue
-            token_seen = token[:MAX_TOKEN_LEN] in resp  # truncation-aware (ISSUE-005)
-            if token_seen and (probe_lit not in resp):
-                redacted, detail = True, f"got {resp[:80]!r}"
-                break
-            detail = f"not redacted: {resp[:80]!r}"
-        print(f"   probe: {e} {'OK' if redacted else 'FAILED'} [{basis}] "
-              f"lit={probe_lit!r} -> {token!r}; {detail}", flush=True)
-        ok = ok and redacted
+        token = os.environ.get(f"{e.upper()}_TOKEN", "")
+        passed, variants, detail = 0, set(), ""
+        for lit, _tok in picks:
+            doc = f"deploy probe: {lit} .end"
+            expected_full = oracle_output(doc, matcher, cur)
+            expected_trunc = oracle_output(doc, matcher, rules_trunc)
+            hit = False
+            for attempt in range(args.attempts):
+                if attempt:
+                    time.sleep(args.delay)
+                try:
+                    resp = call(endpoints.get(e, ""), token, doc)
+                except Exception as exc:  # noqa: BLE001
+                    detail = f"request error on {lit!r}: {str(exc)[:80]}"
+                    continue
+                if resp == expected_full:
+                    hit, variant = True, "full"
+                elif resp == expected_trunc:
+                    hit, variant = True, "trunc15"
+                if hit:
+                    variants.add(variant)
+                    break
+                detail = f"mismatch on {lit!r}: got {resp[:70]!r}"
+            if hit:
+                passed += 1
+            else:
+                break  # a genuine miss on any literal fails the engine; stop probing it
+        engine_ok = passed == len(picks)
+        vlabel = "/".join(sorted(variants)) if variants else "none"
+        print(f"   probe: {e} {'OK' if engine_ok else 'FAILED'} [{basis}] "
+              f"{passed}/{len(picks)} literals byte-for-byte; oracle-variant={vlabel}"
+              + (f"; {detail}" if not engine_ok else ""), flush=True)
+        ok = ok and engine_ok
     return 0 if ok else 1
 
 
