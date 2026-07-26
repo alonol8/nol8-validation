@@ -50,12 +50,10 @@ class DetectorTests(unittest.TestCase):
         self.expected = oracle_output(DOC, self.matcher, RULES)
 
     def _assert_caught(self, bad: str) -> None:
-        # The weak check would pass this output...
+        # The weak check passes this output, but the oracle rejects it — so the
+        # POC's `substr_ok and not exact` divergence condition fires.
         self.assertTrue(substring_pass(bad, PAIRS), "substring check should pass")
-        # ...but the oracle rejects it, so the POC's `substr_ok and not exact`
-        # divergence condition fires.
         self.assertNotEqual(bad, self.expected, "oracle should reject")
-        self.assertTrue(substring_pass(bad, PAIRS) and bad != self.expected)
 
     def test_appended_corruption(self) -> None:
         # Correct redaction, but the engine also mangled the tail.
@@ -72,10 +70,18 @@ class DetectorTests(unittest.TestCase):
         self._assert_caught(bad)
 
     def test_correct_output_is_not_flagged(self) -> None:
-        # The true output must NOT trip the detector.
-        self.assertTrue(substring_pass(self.expected, PAIRS))
-        self.assertEqual(self.expected, self.expected)
-        self.assertFalse(substring_pass(self.expected, PAIRS) and self.expected != self.expected)
+        # Negative control. A human-verified correct output must NOT trip the
+        # detector, AND the oracle must AGREE with it — comparing self.expected
+        # to itself would prove neither. GOOD is the same constant asserted in
+        # test_replaces_at_the_right_position, so this pins oracle_output to a
+        # human-checked value: if the oracle ever drifts from what a correct
+        # engine produces, this assertion fails instead of the POC silently
+        # reporting disagreements against healthy engines.
+        GOOD = "Customer [WATCHED_CUSTO] on account [ACCOUNT_IDS] filed a refund."
+        fresh_oracle = oracle_output(DOC, build_matcher(RULES), RULES)
+        self.assertEqual(fresh_oracle, GOOD)         # oracle == human-verified constant
+        self.assertTrue(substring_pass(GOOD, PAIRS))  # substring passes it too
+        self.assertFalse(substring_pass(GOOD, PAIRS) and GOOD != fresh_oracle)  # detector stays silent
 
 
 class ParsePolicyDuplicateTests(unittest.TestCase):
