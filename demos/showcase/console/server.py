@@ -64,10 +64,10 @@ ENGINES = {
 # docs/DP4-THROUGHPUT-BRIEF.md "efficiency result".
 EFFICIENCY = {
     "themis": {"apollo": 11.3, "matching": 0.0, "total": 11.3, "box_cores": 24,
-               "rps": 28600, "matching_label": "FPGA / 0"},
-    "aergia": {"apollo": 11.3, "matching": 8.2, "total": 19.4, "box_cores": 32,
-               "rps": 26300, "matching_label": "8.2 (RE2 lexers)"},
-    "tax_cores": 8.2, "ratio": 1.9,
+               "rps": 76600, "matching_label": "FPGA / 0"},
+    "aergia": {"apollo": 11.2, "matching": 8.0, "total": 19.2, "box_cores": 32,
+               "rps": 56900, "matching_label": "8.0 (RE2 lexers)"},
+    "tax_cores": 8.0, "ratio": 2.3,  # cores/req: 0.15 vs 0.34 → ~2.3x (10-Argus throughput)
 }
 
 DRIVER = ROOT / "demos" / "benchmark" / "datapoint4" / "results" / "dp4driver"

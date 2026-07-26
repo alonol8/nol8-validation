@@ -56,6 +56,21 @@ All POST, JSON in/out. Errors come back as `{"error": "..."}` with a non-200.
    "applied" before the data plane loads the policy; the server waits `settled`
    seconds. Don't let the UI race ahead of it.
 
+## Priority asks (from Jamie — do these first)
+
+- **Bigger sample corpus — produce ≥50 records** in the first section. The bundled
+  sample is only 3 docs, which is too small to be representative *and* trips the
+  cache-fairness warning on the load step. Generate/prefill ~50+ realistic documents
+  that actually contain the sample governed values (so correctness + load both look
+  real). Keep them fictional (the "Meridian Financial" world in
+  `demos/showcase/byo-poc/sample/` is the reference).
+- **"add category" should help populate it** — don't just append an empty box. Scaffold
+  a sensible category name + a few example values (or a picker of common types: card
+  numbers, account IDs, customer names, sanctioned parties…), so an SA isn't staring at
+  a blank field in front of a customer.
+- **Add a "remove category"** control on each category row (currently you can add but
+  not remove).
+
 ## Known UI TODOs (good places for the pass)
 
 - **Load step real-time feel.** Now has a status panel + elapsed timer + per-engine

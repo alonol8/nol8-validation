@@ -1,135 +1,122 @@
 # Continue conversation — NOL8 validation / demos
 
-Rewritten 2026-07-26 (DP4 resolved). **READ THIS FIRST.** The DP4 throughput
-question is now **resolved**: the old numbers were **edge-limited** (a single Argus
-front-door node), not engine-limited. With the edge scaled to 10 nodes we
-re-measured cleanly. The corrected brief is written; tests are cleared.
+Rewritten 2026-07-26 (evening). **READ THIS FIRST.** DP4 is resolved and the brief
+is corrected + shared. The BYO-data POC is built (CLI + live console UI). The
+console UI works but wants a design pass (handing to Fable). Tests are cleared.
 
 ## 🟢 Current state
 
-- **Tests cleared** (Alon done with Hydra). **10 Argus online** both sides.
-- **Box idle**: no dp4driver, 0 engine connections; engines restored to the
-  **starter policy** (`demos/policies/starter-known-values.nol`) so the redaction
-  console works.
-- **DP4 brief rewritten** → `docs/DP4-THROUGHPUT-BRIEF.md` (source doc). **Jamie
-  re-renders the PDF before any re-share** — it supersedes the prior version wholesale.
+- **Tests cleared.** 10 Argus online both sides. Box idle; engines on the **starter
+  policy** (`demos/policies/starter-known-values.nol`). Console is running (tmux
+  `console`, 0.0.0.0:8770).
+- **DP4 resolved**, brief rewritten + **PDF shared by Jamie**.
+- **BYO POC built + tested** (CLI + console UI), committed + pushed.
+- Everything committed; `git log` head is the BYO/efficiency/UI work.
 
-## 🔑 THE RESOLVED DP4 STORY (what changed and the numbers)
+## 🔑 DP4 — resolved (the corrected story)
 
-**The old ~28.6k/26.3k "~1.09× close" numbers were measured through a SINGLE Argus
-edge node** (the HTTPS front door), which caps ~27k and pinned both engines there.
-Scaling to **10 Argus** and re-running the identical test:
+Old "~28.6k/26.3k, ~1.09× close" was measured through a **single Argus edge node**
+(caps ~27k, pinned both engines). With **10 Argus**:
 
-- **Rule-count sweep (conc 256, 5 reps, 8k rules):** Themis (FPGA) **~76.6k** vs
-  Aergia (RE2) **~56.9k** = **1.35×**. Aergia gently declines with rules
-  (60.8→59.1→56.9k across 2k/4k/8k); Themis flat-high. *(Themis@2k was noisy from
-  5xx bursts — clean reps ~75k; don't cherry-pick it.)*
-- **The ~8.4k "collapse" is GONE** — 5 reps at 8k held ~57k, no crater. It was the
-  single edge node saturating, not RE2. **Integrity item 1 closed.**
-- **Concurrency push (8k rules, 256/512/1024):** Themis **77k → 115k → 146k**;
-  Aergia **57k → 63k → 68k**. **Gap widens 1.35× → 1.83× → 2.15×.**
-  - **Aergia walls at ~68k = a real ENGINE ceiling** (driver was only ~47% busy).
-  - **Themis hit 146k where the DRIVER box maxed (~84% CPU), not the FPGA** — its
-    true ceiling is higher than one load box can find.
-- **Latency:** conc 256 P99 ~5.8ms (Themis) / ~7.9ms (Aergia). The old "19ms P99"
-  was single-edge queuing — gone.
-- **Errors = exclusively HTTP 5xx** (server-side backpressure). Driver instrumented
-  to classify errors: dial/timeout/reset all **zero**; port exhaustion **ruled out**
-  by direct socket measurement (keep-alive held 256 conns, TIME_WAIT 0). 5xx is
-  <0.1% typical, rises under load, heavier on the Themis path (it drives more
-  throughput downstream). **OPEN: where do the 5xx originate (edge vs backend)?** —
-  Jamie is asking **Alon** for server-side logs of the run window.
-- **Deploy ceiling:** 12k-rule policy **refused on Themis**; 8k deploys clean.
+- **Rule-count sweep (conc 256, 5 reps, 8k rules):** Themis ~76.6k vs Aergia ~56.9k
+  = **1.35×**; Aergia declines with rules (60.8→59.1→56.9k), Themis flat-high. The
+  ~8.4k "collapse" is **gone** (5 reps ~57k) — it was single-edge saturation.
+- **Concurrency push (8k):** Themis 77k→115k→146k; Aergia 57k→63k→68k; **gap widens
+  1.35×→1.83×→2.15×.** Aergia walls ~68k = real engine ceiling (driver ~47% idle);
+  Themis hit 146k where the **driver** maxed (~84% CPU), not the FPGA — true ceiling higher.
+- **Latency:** conc 256 P99 ~5.8/7.9ms (was 19ms edge-queue).
+- **Errors = exclusively HTTP 5xx** (server-side). Port exhaustion RULED OUT (socket
+  measurement: keep-alive held 256, TIME_WAIT 0). Driver classifies errors now
+  (`errbreak:` line). **OPEN: 5xx source (edge vs backend)** — Jamie asked **Alon**
+  for logs; fold his answer into the brief when it lands.
+- **Efficiency (measured idle AND under load):** ~8-core software tax; poll-mode →
+  flat idle→load (verified: Themis apollo 10.91→11.29; Aergia apollo 10.97→11.23,
+  lexers 8.17→8.01 under conc-256 load). **Cores/1k: ~0.15 (Themis) vs ~0.34 (Aergia)
+  → ~2.3× host CPU/req** (up from old 1.9× — Themis's true throughput is higher).
+- **Deploy ceiling:** 12k policy refused on Themis; 8k clean.
 
-Evidence (all tracked, `artifacts/evidence/`): `rulecount-10argus-clean.csv`,
-`concpush-8k-themis-10argus.csv`, `concpush-8k-aergia-10argus.csv`, plus the earlier
-`rulecount-10argus-jul25-partial.csv` and the single-Argus baselines
-(`rulecount-jul24-cliff.csv`, `rulecount-jul25-clean.csv`).
+Evidence (tracked, `artifacts/evidence/`): `rulecount-10argus-clean.csv`,
+`concpush-8k-{themis,aergia}-10argus.csv`, plus baselines. Brief:
+`docs/DP4-THROUGHPUT-BRIEF.md` (supersedes prior wholesale; Jamie has re-rendered/shared).
 
-## Durable spine (unaffected by the edge finding)
+## BYO-data POC — BUILT (CLI + console UI)
 
-- **Efficiency:** ~8-core structural software tax (RE2 lexers) the FPGA does in
-  silicon; both data planes poll-mode (constant cost). Per-request multiplier to be
-  **re-measured at the corrected higher throughput** (will favor the FPGA more).
-  Measured on the engine hosts, so the edge finding doesn't touch it.
-- **DP1–DP3 correctness** (oracle-verified) — unaffected.
+The buyer-facing answer to "a load generator is not a POC" — prove it on the
+customer's OWN policy + documents.
+- **CLI:** `demos/showcase/byo-poc/` (`run-byo-poc.sh [dir] [--skip-load]`). Ingest
+  their `values/*.txt` + `documents/` → safe policy (token≤15, ISSUE-004 overlaps
+  dropped) → deploy (settle) → oracle-verify both engines + parity → load their
+  corpus → summary. Sample passes 18/18 both engines, 6/6 identical.
+- **Console UI:** flagship BYO card in `demos/showcase/console/`. Endpoints
+  `/api/byo/build|deploy|correctness|load` (load takes optional `engine` for per-engine
+  progress). Staged build→deploy→verify→load; **load now has a live status panel +
+  elapsed timer + per-engine incremental results**. Prefilled sample.
+- **KEY LESSON baked in:** deploy returns "applied" before the data plane loads the
+  policy — MUST settle (~8s) before verifying or first docs falsely show 0 matches.
 
-## Hydra — SET ASIDE (Jamie's call, 2026-07-26)
+## 🎨 Console UI → hand to Fable (Jamie will drive)
 
-Alon's Hydra dashboard showed Ares(=FPGA?) 120k rps / Aergia 1.4k under 160k
-*offered* open-loop load — that's **congestion collapse under 3× overload**, a
-different axis from our matched-load numbers, NOT an "87× throughput" claim. More
-importantly: **a load generator is not a customer POC** (customers send their own
-data). Decision: don't build on Hydra; focus on self-contained tooling + a
-Bring-Your-Own-Data POC. (Confirm with Alon that "Ares" == our Themis.) See memory
-[[avoid-hydra-grafana-dependency]].
+Good functional first pass; needs a real design/interaction pass. **`demos/showcase/
+console/UI-HANDOFF.md`** documents the data contract + integrity guardrails + TODOs
+for whoever polishes it. **Jamie's specific asks to fold in:**
+- **Bigger sample corpus** — produce **≥50 records** in the first section (the current
+  3-doc sample is too small; also dodges the cache-fairness warning on load).
+- **"add category" should help populate** — scaffold/suggest example values, not just
+  an empty box.
+- **Add a "remove category"** control on each category row.
+- General: layout/hierarchy, real-time load viz, file upload, empty/error states.
+INTEGRITY GUARDRAILS Fable must keep (in UI-HANDOFF.md): keep the cache-fairness
+`warn` visible; ratios/CPU-cost are the defensible facts (not bare absolutes); never
+fabricate "live" numbers; honest engine labels; preserve deploy→settle→verify order.
 
-## Next steps (in order)
+## Console — running now
 
-1. **Commit** the brief + driver instrumentation + evidence (announce first). *(in
-   progress this turn)*
-2. **Build the BYO-data POC flow** on the console: customer brings a sample of their
-   docs + governed-value list → we build the policy → run their docs through both
-   engines, oracle-verify against their own policy → report throughput/latency on
-   *their* corpus + the CPU-cost story. Demo-flow: generate→policy→deploy(confirm
-   applied)→run→results. This is the buyer-facing proof Hydra can't be.
-3. **5xx source** — ingest Alon's server logs; pin edge vs backend; fold into brief.
-4. **Efficiency re-measure** under corrected load (efficiency-demo.sh reps + spread +
-   under-load variant) → update the per-request multiplier in the brief.
-5. **Reconcile stale DEMO-NOTES.md** (old 17,719 / 50k-5k numbers).
-6. **Re-render + re-share the corrected brief** (Jamie).
-7. Later: shareable static dashboard (Artifact); full agentic demo (mesh + pre-index).
+`bash console/run.sh` on nol8-demo (starter policy on boot, 0.0.0.0:8770). Reach it:
+`ssh -f -N -L 8770:localhost:8770 nol8-demo` → http://localhost:8770. **The `-f -N`
+matters** — plain `-L` won't persist ([[console-tunnel-command]]). Direct
+`http://10.8.10.40:8770` is SG-blocked.
+
+## Next steps
+
+1. **Fold Alon's 5xx-source answer** into the brief (edge vs backend) when it arrives.
+2. **Fable UI pass** (Jamie drives) — per UI-HANDOFF.md + the asks above.
+3. **Re-base the console "Scale" card** numbers to the 10-Argus reality (still shows
+   pre-10-Argus figures; the efficiency panel is already updated to ~2.3×/corrected rps).
+4. **Reconcile stale DEMO-NOTES.md**; add a BYO line to `demos/showcase/RUNBOOK.md`.
+5. (efficiency-demo.sh: throughput defaults corrected; reps+spread still a nice-to-have.)
+6. AGENDA: full agentic demo (mesh + pre-index repos) across the 3 use cases.
 
 ## Hosts (SSH)
 
 | host | what | reach |
 |---|---|---|
-| `nol8-demo` | driver/console box (aka data-streamer), m7a.2xlarge, GOMAXPROCS=8, 10.8.10.40 | reaches engines :443/:444; Go + venv + dp4driver. **Becomes the throughput limit ~146k+ (driver CPU).** |
+| `nol8-demo` | driver/console box (aka data-streamer), m7a.2xlarge, GOMAXPROCS=8, 10.8.10.40 | reaches engines :443/:444; Go + venv + dp4driver. Becomes the throughput limit ~146k+ (driver CPU). |
 | `themis-demo` | FPGA backend, f2.6xlarge, 24 cores, AFI loaded | Mac only |
 | `aergia-demo` | RE2 backend, 32 cores | Mac only |
 | `hydra-demo` | Alon's load-gen + obs | my key NOT authorized; set aside |
 
 Repo: Mac `~/Code/nol8/nol8-validation`, EC2 `/opt/nol8/nol8-validation`. **results/
-is gitignored** — copy raw to `artifacts/evidence/` (tracked). Argus config: Jamie
-has the URL/login (fleet scales; was 1 overnight, now 10). Brand guide
-`~/Code/nol8/nol8-brand-guide` (charcoal `#404040`, green `#33B046`, Google Sans).
+gitignored** — copy raw to `artifacts/evidence/` (tracked). Brand guide
+`~/Code/nol8/nol8-brand-guide`.
 
-## Operational lessons (don't repeat)
+## Hydra — SET ASIDE
+
+A load generator is not a POC (customers send their own data). Don't build on Hydra;
+BYO-POC is the buyer-facing proof. (Confirm "Ares" == our Themis with Alon.) See
+[[avoid-hydra-grafana-dependency]].
+
+## Operational lessons
 
 - **Run anything >1 min inside `tmux` on the box** — ssh-foreground-held-by-a-
-  background-task dies on a VPN flap (killed a run last night). tmux survived today.
-- **The auto-mode classifier blocks `nohup … &` and `cat > file <<EOF` over ssh** —
-  write scripts locally + `scp` them, launch via tmux.
-- **Copy raw CSVs to `artifacts/evidence/` as part of the run**, not after.
-- **The driver (`demos/benchmark/datapoint4/go/main.go`) now classifies errors** —
-  prints an `errbreak:` line (dial/timeout/reset/eof/http4xx/http5xx/other) whenever
-  a cell has errors. CSV schema unchanged (console/build-rulecount.py still parse).
-
-## BYO-data POC — BUILT (CLI + console UI), tested, committed
-
-The buyer-facing answer to "a load generator is not a POC." Prove it on the
-customer's OWN policy + documents.
-- **CLI:** `demos/showcase/byo-poc/` — `run-byo-poc.sh [dir] [--skip-load]`. Ingest
-  their `values/*.txt` + `documents/` → build safe policy (token≤15, ISSUE-004
-  overlaps dropped) → deploy (settle for data-plane propagation) → oracle-verify
-  both engines + parity → load-test their corpus → summary. Bundled `sample/`
-  ("Meridian Financial") passes 18/18 both engines, 6/6 identical, load ~1.30×.
-- **Console UI:** flagship BYO card in `demos/showcase/console/` — paste values +
-  docs, staged buttons build→deploy→verify→load, each revealing output; prefilled
-  with a sample. Four endpoints in server.py (`/api/byo/build|deploy|correctness|
-  load`). Verified end-to-end (Themis 156k vs Aergia 112k = 1.39× on 2 docs, with
-  the cache-fairness warning).
-- **KEY LESSON baked in:** deploy returns "applied" before the data plane loads the
-  policy — MUST settle (~8s) before verifying or the first docs falsely show 0
-  matches (byo_poc caught this live). The console/rulecount scripts settle 6-8s.
-- **Console is RUNNING** on nol8-demo (tmux `console`, 0.0.0.0:8770; starter policy
-  restored). Reach it: `ssh -f -N -L 8770:localhost:8770 nol8-demo` → http://localhost:8770.
-- **TODO:** the console's older "Scale" card numbers still reflect pre-10-Argus;
-  re-base them. Add a BYO line to `demos/showcase/RUNBOOK.md`. Also `demos/showcase/`
-  CLI tour + RUNBOOK exist.
+  background-task dies on a VPN flap.
+- **Classifier blocks `nohup … &` and `cat > file <<EOF` over ssh** — write scripts
+  locally + `scp`, launch via tmux.
+- **Copy raw CSVs to `artifacts/evidence/` as part of the run.**
+- **`macOS has no `timeout`** (don't wrap local commands in it).
+- **Driver classifies errors** (`errbreak:` line); CSV schema unchanged.
 
 ## Memories to respect
 
-Substitution-not-enforcement; benchmark-integrity-no-rigging; announce-before-git;
+substitution-not-enforcement; benchmark-integrity-no-rigging; announce-before-git;
 demos-must-be-SA-runnable; avoid-Hydra/Grafana; argus-edge-was-throughput-ceiling;
-"update the project" = rewrite this file wholesale.
+console-tunnel-command (`ssh -f -N -L`); "update the project" = rewrite this file wholesale.

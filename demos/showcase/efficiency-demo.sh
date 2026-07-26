@@ -16,8 +16,12 @@ set -uo pipefail
 
 THEMIS_HOST="${THEMIS_HOST:-themis-demo}"
 AERGIA_HOST="${AERGIA_HOST:-aergia-demo}"
-THEMIS_RPS="${THEMIS_RPS:-28600}"   # measured, DP4 small-payload
-AERGIA_RPS="${AERGIA_RPS:-26300}"
+# Corrected throughput: DP4 10-Argus clean sweep, 8k rules, conc 256 (medians).
+# The old 28,600/26,300 were EDGE-limited (single Argus) — see DP4 brief. Cores are
+# poll-mode → verified flat idle→load (Themis apollo 10.91→11.29, Aergia apollo
+# 10.97→11.23 / lexers 8.17→8.01 under conc-256 load), so idle sampling is valid.
+THEMIS_RPS="${THEMIS_RPS:-76600}"
+AERGIA_RPS="${AERGIA_RPS:-56900}"
 WINDOW="${WINDOW:-4}"               # seconds to average core usage over
 
 # Sum utime+stime (fields 14,15) across all PIDs matching a name, twice, WINDOW

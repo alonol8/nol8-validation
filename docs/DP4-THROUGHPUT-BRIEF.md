@@ -62,7 +62,7 @@ holds up, now that the edge is no longer the bottleneck:
    FPGA's ceiling.
 5. **Efficiency is the durable thesis.** Separate from raw speed: the software
    engine burns **~8 dedicated CPU cores** doing the matching that the FPGA does in
-   silicon — roughly **half the host CPU per request** for the same result.
+   silicon — **~2.3× less host CPU per request** for the same result.
 
 **The honest shape of it:** at a light load the engines look close-ish (~1.35×);
 under real pressure the FPGA pulls away (2×+) because it scales where software
@@ -179,11 +179,20 @@ plane (Apollo), so it subtracts out cleanly.
 - **Verified real:** the FPGA is genuinely doing the matching (loaded FPGA image on
   an AWS F2 instance; output confirmed correct by DP1–DP3), not a software fallback.
 
-*Note: the per-request efficiency multiplier (cores per 1,000 req/s) will be
-re-measured against the corrected, higher throughput — it will move in the FPGA's
-favor, since the FPGA now shows ~2× the throughput of software on fewer host cores.
-The ~8-core structural difference above is throughput-independent (poll-mode) and
-stands as-is.*
+**Per-request cost, at the corrected throughput (measured under load):** we sampled
+the engine-host cores *while driving* each engine at conc 256 / 8k rules and confirmed
+poll-mode constancy — cores held flat from idle to full load (Themis apollo 10.91→11.29;
+Aergia apollo 10.97→11.23, lexers 8.17→8.01):
+
+| Engine | Host cores (under load) | Throughput | **Cores per 1,000 req/s** |
+|---|---|---|---|
+| **Themis** (FPGA) | ~11.3 | ~76,600 req/s | **~0.15** |
+| **Aergia** (RE2 software) | ~19.2 | ~56,900 req/s | **~0.34** |
+
+So the software path costs **~2.3× the host CPU per request** — *more* than the old
+~1.9× figure, because the FPGA's true throughput (once the edge stopped masking it)
+is higher, so its cost-per-request is lower. The ~8-core tax is confirmed both idle
+and under load; poll-mode means it's a standing cost, not a load-driven spike.
 
 ---
 
@@ -255,7 +264,7 @@ no port churn.)
   regardless of policy size and match density — a fixed pipeline with no cache, no
   garbage collection, no per-rule cost to fall victim to. You provision against a
   flat line.
-- **Efficiency (the thesis):** the same, correct, verifiable job at **~half the host
+- **Efficiency (the thesis):** the same, correct, verifiable job at **~2.3× less host
   CPU per request** — the software matcher burns ~8 cores the FPGA does in silicon.
   At fleet scale that's the cores/power/dollars line, and it's where the hardware
   earns its keep.
@@ -292,12 +301,13 @@ no port churn.)
   measurement. 5xx source being confirmed with engineering.
 - **Matching is free (single-request probe):** identical latency for zero-match vs
   match-packed text of the same size on the FPGA (512 KB: ≈373 ms either way).
-- **Efficiency (measured on the engine hosts):** Themis ~11.3 total host cores
-  (Apollo data plane; FPGA does matching in silicon, 0 host cores); Aergia ~19.4
-  (~11.3 Apollo + ~8.2 RE2 lexer cores). **~8-core structural software tax**, both
-  poll-mode (consumed continuously). Per-request multiplier to be re-measured at the
-  corrected throughput. FPGA verified engaged (loaded AFI on f2.6xlarge; DP1–DP3
-  correct).
+- **Efficiency (measured on the engine hosts, idle AND under load):** Themis ~11.3
+  total host cores (Apollo data plane; FPGA does matching in silicon, 0 host cores);
+  Aergia ~19.2 (~11.2 Apollo + ~8 RE2 lexer cores). **~8-core structural software
+  tax**, poll-mode → constant idle→load (verified: Themis apollo 10.91→11.29, Aergia
+  apollo 10.97→11.23 / lexers 8.17→8.01 under conc-256 load). **Cores per 1k req/s:
+  ~0.15 (Themis @76.6k) vs ~0.34 (Aergia @56.9k) → ~2.3× the host CPU per request.**
+  FPGA verified engaged (loaded AFI on f2.6xlarge; DP1–DP3 correct).
 - **Deployment ceiling:** the FPGA refuses a 12,000-rule policy; 8,000 deploys and
   runs clean. Range above the deploy ceiling is untestable today.
 - **Large payloads:** ~135–155 MB/s aggregate — **not an engine limit**; the driver
