@@ -16,9 +16,15 @@
 # both engines get the identical corpus in a cell — so the engine RATIO per cell is
 # clean. The cross-cell rule-count TREND is mildly confounded by that body-size
 # drift; read it alongside the per-cell avg_body_bytes column, which the driver
-# records. (To remove the confound entirely, generate one corpus outside the loop
-# and reuse it — relies on the catalogs being nested, which they are; deferred as a
-# deliberate experiment-design change, not done here.)
+# records.
+#
+# Why regenerate rather than fix one corpus: fixing the corpus would make MATCH
+# DENSITY co-vary with rule count (the catalog is nested, so a 2k policy matches
+# fewer literals in the same document than an 8k policy), which blends automaton
+# size with match count — the worse confound for "RE2 slows as the pattern set
+# grows." Regenerating is intended to hold match density ~constant and isolate rule
+# count. ASSUMPTION, not yet verified: that the generator actually holds match
+# density roughly constant across rule counts. Treat the trend accordingly.
 #
 #   bash demos/benchmark/datapoint4/rulecount-live.sh
 #   DP4_RULE_COUNTS="1000 4000 16000" DP4_RC_DURATION=10 bash .../rulecount-live.sh

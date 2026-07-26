@@ -364,6 +364,9 @@ func runCell(client *http.Client, engine, endpoint, token string, cb *corpusBuck
 		// applied over. Wall-clock includes post-deadline drain of stalled requests
 		// (a single 4s straggler would otherwise halve a 4s cell's reported rps);
 		// that lost capacity is reported honestly as StallSeconds instead.
+		// Nuance: `completed` includes the few requests that finish DURING the drain
+		// (issued before the deadline, completed just after), so rps slightly
+		// overstates — on the order of 0.02% at 256 workers and ~3ms mean latency.
 		DurationS:    steady.Seconds(),
 		WallElapsedS: pr.elapsed.Seconds(),
 		Completed:    pr.completed,
