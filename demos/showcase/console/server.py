@@ -72,6 +72,13 @@ EFFICIENCY = {
 
 DRIVER = ROOT / "demos" / "benchmark" / "datapoint4" / "results" / "dp4driver"
 
+# Bring-Your-Own-Data POC scratch: the policy + corpus built from customer input
+# pasted into the console (kept out of git; regenerated per build).
+BYO_WORK = HERE / "byo_work"
+BYO_POLICY = BYO_WORK / "byo-policy.nol"
+BYO_CORPUS = BYO_WORK / "byo-input.jsonl"
+MAX_TOKEN_LENGTH = 15  # runtime truncates tokens past 15 chars (ISSUE-005)
+
 
 def find_corpus() -> str | None:
     runs = sorted((ROOT / "artifacts" / "runs").glob("*/generated/input.jsonl"), reverse=True)
@@ -264,6 +271,223 @@ def deploy_policy() -> dict:
     return status
 
 
+# ---- Bring-Your-Own-Data POC ------------------------------------------------
+# A load generator is not a POC. This lets an SA paste a customer's own governed
+# values + documents and prove, live: (1) correct redaction on THEIR data,
+# oracle-verified on both engines; (2) the CPU-cost story; (3) throughput on
+# THEIR corpus. Mirrors demos/showcase/byo-poc/byo_poc.py, driven from the UI.
+
+def _byo_token(name: str, used: set) -> str:
+    """Distinct, <=15-char governance token from a category name (ISSUE-005)."""
+    slug = re.sub(r"[^A-Za-z0-9]+", "_", name).strip("_").upper()
+    base = slug[: MAX_TOKEN_LENGTH - 2]
+    token = f"[{base}]"
+    n = 1
+    while token in used:
+        n += 1
+        s = str(n)
+        token = f"[{slug[: MAX_TOKEN_LENGTH - 2 - len(s)] + s}]"
+    used.add(token)
+    return token
+
+
+def _byo_sanitize(cats):
+    """Drop values that would make an unsafe policy (ISSUE-004 containment,
+    duplicates), reporting each. Keeps the deployed policy safe."""
+    seen, dropped, safe = set(), [], []
+    allv = [v for _, _, vs in cats for v in vs]
+    for token, label, values in cats:
+        kept = []
+        for v in values:
+            if v in seen:
+                dropped.append((v, "duplicate value")); continue
+            ci = next((o for o in allv if o != v and v in o), None)
+            cc = next((i for i in allv if i != v and i in v), None)
+            if ci is not None:
+                dropped.append((v, f"contained in {ci!r} (ISSUE-004)")); continue
+            if cc is not None:
+                dropped.append((v, f"contains {cc!r} (ISSUE-004)")); continue
+            seen.add(v); kept.append(v)
+        if kept:
+            safe.append((token, label, kept))
+    return safe, dropped
+
+
+def _byo_render(cats) -> str:
+    lines = ["# BYO customer policy — deterministic literal match (built in the console).", ""]
+    for token, label, values in cats:
+        lines.append(f"# {label} -> {token}")
+        for v in values:
+            lines.append(f'"{v.replace(chr(34), chr(92) + chr(34))}" -> "{token}";')
+        lines.append("")
+    return "\n".join(lines)
+
+
+def _byo_pairs():
+    return policy_pairs_from(BYO_POLICY)
+
+
+def policy_pairs_from(path):
+    pairs = []
+    for line in Path(path).read_text(encoding="utf-8").splitlines():
+        if line.lstrip().startswith("#"):
+            continue
+        m = POLICY_RULE.match(line)
+        if m:
+            pairs.append((m.group("lit"), m.group("tok")))
+    return pairs
+
+
+def _byo_docs():
+    docs = []
+    if not BYO_CORPUS.exists():
+        return docs
+    for line in BYO_CORPUS.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            docs.append(json.loads(line)["message"])
+        except Exception:  # noqa: BLE001
+            pass
+    return docs
+
+
+def byo_build(payload: dict) -> dict:
+    used, cats = set(), []
+    for c in payload.get("categories", []):
+        name = (c.get("name") or "").strip()
+        raw = c.get("values")
+        if isinstance(raw, str):
+            values = [v.strip() for v in raw.splitlines() if v.strip()]
+        else:
+            values = [str(v).strip() for v in (raw or []) if str(v).strip()]
+        if name and values:
+            cats.append((_byo_token(name, used), name, values))
+    cats, dropped = _byo_sanitize(cats)
+    if not cats:
+        return {"error": "no usable governed values — add at least one category with values"}
+    BYO_WORK.mkdir(parents=True, exist_ok=True)
+    BYO_POLICY.write_text(_byo_render(cats), encoding="utf-8")
+    docs = [d for d in ((s or "").strip() for s in payload.get("documents", [])) if d]
+    with BYO_CORPUS.open("w", encoding="utf-8") as fh:
+        for d in docs:
+            fh.write(json.dumps({"message": d}) + "\n")
+    avg = sum(len(d.encode()) for d in docs) // len(docs) if docs else 0
+    preview = [ln for ln in BYO_POLICY.read_text(encoding="utf-8").splitlines()[2:] if ln][:10]
+    return {
+        "rule_count": sum(len(v) for _, _, v in cats),
+        "categories": [{"token": t, "label": l, "count": len(v)} for t, l, v in cats],
+        "dropped": [{"value": v, "why": w} for v, w in dropped],
+        "policy_preview": preview,
+        "docs": len(docs), "avg_bytes": avg,
+        "doc_sample": docs[0][:400] if docs else "",
+    }
+
+
+def byo_deploy(settle: int = 8) -> dict:
+    if not BYO_POLICY.exists():
+        return {"error": "build a policy first"}
+    status = {}
+    for eng in ("themis", "aergia"):
+        try:
+            r = subprocess.run(["validate", "policy", "--file", str(BYO_POLICY), "--target", eng],
+                               capture_output=True, timeout=180)
+            status[eng] = "applied" if r.returncode == 0 else "failed"
+        except Exception as exc:  # noqa: BLE001
+            status[eng] = f"error: {exc}"
+    ok = all(v == "applied" for v in status.values())
+    if ok:
+        time.sleep(settle)  # let the data plane load the policy before we verify
+    return {"status": {e: {"state": s, "label": ENGINES[e]["label"]} for e, s in status.items()},
+            "settled": settle if ok else 0}
+
+
+def byo_correctness(engines=("themis", "aergia")) -> dict:
+    if not BYO_POLICY.exists() or not BYO_CORPUS.exists():
+        return {"error": "build + deploy first"}
+    pairs, docs = _byo_pairs(), _byo_docs()
+    rows = []
+    totals = {e: {"verified": 0, "in_scope": 0} for e in engines}
+    parity_ok = parity_total = 0
+    for i, original in enumerate(docs):
+        in_scope = [(l, t) for l, t in pairs if l and l in original]
+        occ = sum(original.count(l) for l, _ in in_scope)
+        mb = len(original.encode("utf-8"))
+        outs, reng = {}, {}
+        for e in engines:
+            try:
+                processed = call_process(e, original)
+            except Exception as exc:  # noqa: BLE001
+                reng[e] = {"error": str(exc)[:120]}; continue
+            outs[e] = processed
+            ver = sum(1 for l, t in in_scope if l not in processed and t in processed)
+            totals[e]["verified"] += ver
+            totals[e]["in_scope"] += len(in_scope)
+            reng[e] = {"verified": ver, "in_scope": len(in_scope), "ok": ver == len(in_scope)}
+        if len(outs) == 2:
+            parity_total += 1
+            parity_ok += 1 if len(set(outs.values())) == 1 else 0
+        rows.append({"doc": i + 1, "bytes": mb, "in_scope": len(in_scope),
+                     "density": round(occ / (mb / 1024), 1) if mb else 0.0,
+                     "engines": reng,
+                     "identical": len(outs) == 2 and len(set(outs.values())) == 1})
+    return {
+        "rows": rows,
+        "totals": {e: {**totals[e], "label": ENGINES[e]["label"],
+                       "pct": round(100 * totals[e]["verified"] / totals[e]["in_scope"], 1)
+                       if totals[e]["in_scope"] else 0.0} for e in engines},
+        "parity_ok": parity_ok, "parity_total": parity_total,
+    }
+
+
+def byo_load(concurrency: int = 256, duration: int = 10, warmup: int = 5,
+             engines=("themis", "aergia")) -> dict:
+    if not DRIVER.exists():
+        return {"error": "load driver not built"}
+    if not BYO_CORPUS.exists():
+        return {"error": "build + deploy first"}
+    env = os.environ.copy()
+    env["THEMIS_ENDPOINT"] = ENGINES["themis"]["endpoint"]
+    env["AERGIA_ENDPOINT"] = ENGINES["aergia"]["endpoint"]
+    docs = _byo_docs()
+    res = {}
+    for e in engines:
+        csv = f"/tmp/byo_console_{e}.csv"
+        try:
+            r = subprocess.run(
+                [str(DRIVER), "--engine", e, "--label", e, "--input", str(BYO_CORPUS),
+                 "--concurrency", str(concurrency), "--payloads", "small,medium,large",
+                 "--warmup", str(warmup), "--duration", str(duration),
+                 "--cap-small", "20000", "--cap-medium", "8000", "--cap-large", "4000",
+                 "--output", csv],
+                env=env, capture_output=True, timeout=(warmup + duration) * 4 + 60)
+        except Exception as exc:  # noqa: BLE001
+            res[e] = {"label": ENGINES[e]["label"], "error": str(exc)[:120]}; continue
+        if r.returncode != 0 or not Path(csv).exists():
+            res[e] = {"label": ENGINES[e]["label"], "error": "driver run failed"}; continue
+        cells = []
+        for ln in Path(csv).read_text(encoding="utf-8").strip().splitlines()[1:]:
+            c = ln.split(",")
+            cells.append({"payload": c[2], "rps": round(float(c[8])), "p99": float(c[12]),
+                          "errors": int(c[7]), "mib_s": round(float(c[9]), 1)})
+        res[e] = {"label": ENGINES[e]["label"], "cells": cells}
+    out = {"engines": res, "distinct_docs": len(docs)}
+    if len(docs) < 2000:
+        out["warn"] = (f"only {len(docs)} distinct documents — a small working set can flatter "
+                       "the software engine (it serves repeats warm from cache). Supply a few "
+                       "thousand representative docs for a cache-fair number.")
+
+    def small(e):
+        return next((c["rps"] for c in res.get(e, {}).get("cells", []) if c["payload"] == "small"), 0)
+    a, b = small("themis"), small("aergia")
+    if a and b:
+        hi, lo = (a, b) if a >= b else (b, a)
+        lead = "themis" if a >= b else "aergia"
+        out["ratio"] = {"lead": ENGINES[lead]["label"], "x": round(hi / lo, 2), "hi": hi, "lo": lo}
+    return out
+
+
 ASSET_TYPES = {".woff2": "font/woff2", ".svg": "image/svg+xml",
                ".css": "text/css", ".js": "text/javascript", ".png": "image/png"}
 
@@ -334,6 +558,17 @@ class Handler(BaseHTTPRequestHandler):
                 if not message.strip():
                     return self._send(400, {"error": "empty message"})
                 return self._send(200, process(engine, message))
+            if path == "/api/byo/build":
+                return self._send(200, byo_build(payload if isinstance(payload, dict) else {}))
+            if path == "/api/byo/deploy":
+                return self._send(200, byo_deploy())
+            if path == "/api/byo/correctness":
+                return self._send(200, byo_correctness())
+            if path == "/api/byo/load":
+                payload = payload if isinstance(payload, dict) else {}
+                return self._send(200, byo_load(
+                    concurrency=int(payload.get("concurrency", 256)),
+                    duration=int(payload.get("duration", 10))))
             return self._send(404, {"error": "not found"})
         except Exception as exc:  # noqa: BLE001
             return self._send(502, {"error": str(exc)})

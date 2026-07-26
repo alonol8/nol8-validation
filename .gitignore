@@ -56,3 +56,4 @@ demos/benchmark/datapoint4/rulecount-report.html
 handoff/
 # BYO-POC generated artifacts (policy + corpus built from customer input)
 demos/showcase/byo-poc/**/generated/
+demos/showcase/console/byo_work/

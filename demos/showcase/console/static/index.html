@@ -113,6 +113,23 @@
   .foot{max-width:1240px;margin:24px auto 0;font-size:12px;color:var(--muted);text-align:center;}
   .spin{display:inline-block;width:13px;height:13px;border:2px solid rgba(255,255,255,.25);border-top-color:var(--green);border-radius:50%;animation:sp .7s linear infinite;vertical-align:-2px;}
   @keyframes sp{to{transform:rotate(360deg);}}
+
+  /* bring-your-own-data */
+  .byo-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
+  @media(max-width:820px){.byo-grid{grid-template-columns:1fr;}}
+  #byoCats{display:flex;flex-direction:column;gap:10px;margin-bottom:10px;}
+  .catrow{display:flex;flex-direction:column;gap:6px;background:var(--panel-2);border:1px solid var(--line);border-radius:10px;padding:10px;}
+  .catrow input{background:var(--charcoal);color:var(--white);border:1px solid var(--line);border-radius:8px;padding:8px 10px;font:inherit;font-size:13px;}
+  .catrow input:focus{outline:none;border-color:var(--green);}
+  .catrow textarea{min-height:58px;font-size:13px;}
+  .byostep{background:var(--green);color:#0f2a15;} .byostep.done{background:var(--raise);color:var(--white);border:1px solid rgba(51,176,70,.45);}
+  .pre{background:var(--panel-2);border:1px solid var(--line);border-radius:10px;padding:12px 14px;font-family:ui-monospace,Menlo,monospace;font-size:12px;white-space:pre-wrap;color:#dfe;overflow-x:auto;margin-top:12px;}
+  .chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;}
+  .chip{background:var(--raise);border:1px solid var(--line);border-radius:999px;padding:5px 11px;font-size:12px;}
+  .chip b{color:var(--mint);font-family:ui-monospace,monospace;}
+  .applied{display:flex;gap:14px;flex-wrap:wrap;margin-top:12px;}
+  .appbadge{display:flex;align-items:center;gap:8px;font-size:14px;background:var(--panel-2);border:1px solid var(--line);border-radius:10px;padding:10px 14px;}
+  .appbadge.ok{border-color:rgba(51,176,70,.45);} .appbadge .s{font-weight:700;}
 </style>
 </head>
 <body>
@@ -125,6 +142,34 @@
 </header>
 
 <main>
+  <!-- BRING YOUR OWN DATA (customer POC) -->
+  <section class="card" id="byoCard">
+    <span class="label">Bring Your Own Data · prove it on the customer's own policy + documents</span>
+    <p class="scope" style="margin:0 0 16px;max-width:900px">A load generator isn't a POC. Paste the customer's governed values and a few of their real documents, then walk the pipeline live: <b>build a policy → deploy → verify redaction on their data (both engines) → load-test their corpus</b>. Everything deterministic literal replacement, verified against their own policy.</p>
+    <div class="byo-grid">
+      <div class="field">
+        <span class="scope">Governed values — one category per block (name + one value per line). Filename→token, ≤15 chars, overlaps dropped.</span>
+        <div id="byoCats"></div>
+        <button class="process ghost" id="byoAddCat" style="align-self:flex-start;padding:8px 14px;font-size:13px">+ add category</button>
+      </div>
+      <div class="field">
+        <span class="scope">Customer documents — separate each document with a blank line</span>
+        <textarea id="byoDocs" spellcheck="false" style="min-height:220px"></textarea>
+      </div>
+    </div>
+    <div class="go">
+      <button class="process byostep" id="byoBuild">1 · Build policy + corpus</button>
+      <button class="process ghost" id="byoDeploy" disabled>2 · Deploy</button>
+      <button class="process ghost" id="byoVerify" disabled>3 · Verify correctness</button>
+      <button class="process ghost" id="byoLoad" disabled>4 · Load-test their corpus</button>
+    </div>
+    <div class="err" id="byoErr" hidden></div>
+    <div id="byoBuildOut"></div>
+    <div id="byoDeployOut"></div>
+    <div id="byoVerifyOut"></div>
+    <div id="byoLoadOut"></div>
+  </section>
+
   <!-- CONTROLS -->
   <section class="card">
     <span class="label">Drive it · pick a prompt or write your own</span>
@@ -360,10 +405,97 @@ function renderEfficiency(){
   $('#taxN').textContent='~'+EFF.tax_cores; $('#ratioN').textContent='~'+EFF.ratio+'×';
 }
 
+/* ---- Bring Your Own Data ---- */
+const BYO_SAMPLE_CATS=[
+  {name:'watched customers',values:'Halcyon Freight Ltd\nBrightwater Capital\nIrongate Logistics'},
+  {name:'account ids',values:'MFN-88213-01\nMFN-44190-07\nMFN-72651-33'},
+  {name:'card numbers',values:'4716 3502 8841 2290\n5299 7710 6634 1185'},
+];
+const BYO_SAMPLE_DOCS=[
+  'Support ticket: Halcyon Freight Ltd reports a declined charge on card 4716 3502 8841 2290 tied to account MFN-88213-01. Confirm the refund window.',
+  '[agent: onboarding -> agent: compliance] Run Irongate Logistics through enhanced due diligence; reference account MFN-72651-33.',
+  'Draft a professional email to Brightwater Capital about the disputed charge on card 5299 7710 6634 1185.',
+].join('\n\n');
+
+function catRow(name='',values=''){
+  const d=document.createElement('div');d.className='catrow';
+  d.innerHTML=`<input class="cat-name" placeholder="category name (e.g. account ids)" value="${esc(name)}">`+
+    `<textarea class="cat-values" spellcheck="false" placeholder="one value per line">${esc(values)}</textarea>`;
+  return d;
+}
+const collectCats=()=>[...document.querySelectorAll('#byoCats .catrow')]
+  .map(r=>({name:r.querySelector('.cat-name').value,values:r.querySelector('.cat-values').value}))
+  .filter(c=>c.name.trim()&&c.values.trim());
+const collectDocs=()=>$('#byoDocs').value.split(/\n\s*\n/).map(s=>s.trim()).filter(Boolean);
+async function byoPost(path,body){
+  const r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body||{})});
+  const d=await r.json(); if(!r.ok||d.error) throw new Error(d.error||'failed'); return d;
+}
+function byoBusy(btn,label){btn.disabled=true;btn._t=btn.innerHTML;btn.innerHTML='<span class="spin"></span> '+label;}
+function byoDone(btn,markDone){btn.disabled=false;if(btn._t)btn.innerHTML=btn._t;if(markDone)btn.classList.add('done');}
+function byoFail(e){const x=$('#byoErr');x.hidden=false;x.textContent='⚠ '+e.message;}
+
+async function byoBuild(){
+  $('#byoErr').hidden=true;const btn=$('#byoBuild');byoBusy(btn,'Building…');
+  try{
+    const d=await byoPost('/api/byo/build',{categories:collectCats(),documents:collectDocs()});
+    const chips=d.categories.map(c=>`<span class="chip"><b>${esc(c.token)}</b> ${esc(c.label)} · ${c.count}</span>`).join('');
+    const drop=d.dropped.length?`<div class="warn" style="margin-top:10px">⚠ dropped ${d.dropped.length} unsafe value(s): `+d.dropped.map(x=>esc(x.value)+' ('+esc(x.why)+')').join('; ')+'</div>':'';
+    $('#byoBuildOut').innerHTML=`<div class="chips">${chips}</div>${drop}`+
+      `<div class="scope" style="margin-top:12px">Policy: <b>${d.rule_count}</b> rules · Corpus: <b>${d.docs}</b> documents (avg ${d.avg_bytes} bytes)</div>`+
+      `<div class="pre">${esc(d.policy_preview.join('\n'))}</div>`;
+    ['#byoDeploy','#byoVerify','#byoLoad'].forEach(s=>{$(s).disabled=true;$(s).classList.remove('done');});
+    ['#byoDeployOut','#byoVerifyOut','#byoLoadOut'].forEach(s=>$(s).innerHTML='');
+    $('#byoDeploy').disabled=false;byoDone(btn,true);
+  }catch(e){byoFail(e);byoDone(btn);}
+}
+async function byoDeploy(){
+  $('#byoErr').hidden=true;const btn=$('#byoDeploy');byoBusy(btn,'Deploying + settling…');
+  try{
+    const d=await byoPost('/api/byo/deploy',{});
+    const b=Object.values(d.status).map(s=>`<div class="appbadge ${s.state==='applied'?'ok':''}"><span class="s ${s.state==='applied'?'grn':'bad'}">${s.state==='applied'?'✓ APPLIED':'✗ '+esc(s.state)}</span> ${esc(s.label)}</div>`).join('');
+    $('#byoDeployOut').innerHTML=`<div class="applied">${b}</div><div class="scope" style="margin-top:8px">Waited ${d.settled}s for the data plane to load the policy before verifying.</div>`;
+    $('#byoVerify').disabled=false;byoDone(btn,true);
+  }catch(e){byoFail(e);byoDone(btn);}
+}
+async function byoVerify(){
+  $('#byoErr').hidden=true;const btn=$('#byoVerify');byoBusy(btn,'Verifying on both engines…');
+  try{
+    const d=await byoPost('/api/byo/correctness',{});
+    const cell=(r,e)=>{const v=r.engines[e];if(!v)return '—';if(v.error)return '<span class="bad">ERR</span>';
+      return v.ok?`<span class="ok">${v.verified}/${v.in_scope} ✓</span>`:`<span class="bad">${v.verified}/${v.in_scope} ✗</span>`;};
+    const rows=d.rows.map(r=>`<tr><td class="num">${r.doc}</td><td class="num tnum">${r.bytes}</td><td class="num tnum">${r.in_scope}</td><td class="num tnum">${r.density}</td><td>${cell(r,'themis')}</td><td>${cell(r,'aergia')}</td><td>${r.identical?'<span class="ok">✓</span>':'<span class="bad">✗</span>'}</td></tr>`).join('');
+    const tot=e=>`${d.totals[e].verified}/${d.totals[e].in_scope} (${d.totals[e].pct}%)`;
+    const allok=d.totals.themis.pct===100&&d.totals.aergia.pct===100;
+    $('#byoVerifyOut').innerHTML=`<table><thead><tr><th class="num">doc</th><th class="num">bytes</th><th class="num">in-scope</th><th class="num">matches/KB</th><th>Themis</th><th>Aergia</th><th>identical</th></tr></thead><tbody>${rows}</tbody></table>`+
+      `<div class="compare"><span>Themis <b>${tot('themis')}</b></span><span>Aergia <b>${tot('aergia')}</b></span><span class="${d.parity_ok===d.parity_total&&allok?'ident':'bad'}">${d.parity_ok}/${d.parity_total} documents identical on both engines</span></div>`;
+    $('#byoLoad').disabled=false;byoDone(btn,true);
+  }catch(e){byoFail(e);byoDone(btn);}
+}
+async function byoLoad(){
+  $('#byoErr').hidden=true;const btn=$('#byoLoad');byoBusy(btn,'Driving their corpus (~40s)…');
+  try{
+    const d=await byoPost('/api/byo/load',{concurrency:256,duration:10});
+    const card=(e,fpga)=>{const r=d.engines[e];if(!r)return '';
+      if(r.error)return `<div class="aggcard"><h4>${esc(r.label)}</h4><div class="err">⚠ ${esc(r.error)}</div></div>`;
+      const cells=r.cells.filter(c=>c.rps>0).map(c=>`<div class="m"><div class="v ${fpga?'grn':''} tnum">${c.rps.toLocaleString()}</div><div class="k">${c.payload} req/s · p99 ${c.p99}ms · ${c.errors} err</div></div>`).join('');
+      return `<div class="aggcard ${fpga?'fpga':''}"><h4>${esc(r.label)}</h4><div class="grid">${cells||'<div class="scope">no cells</div>'}</div></div>`;};
+    const ratio=d.ratio?`<div class="compare"><span class="ident">✓ ${esc(d.ratio.lead)} leads ${d.ratio.x}× on the customer's data (${d.ratio.hi.toLocaleString()} vs ${d.ratio.lo.toLocaleString()} req/s)</span></div>`:'';
+    const warn=d.warn?`<div class="warn" style="margin-top:10px">⚠ ${esc(d.warn)}</div>`:'';
+    $('#byoLoadOut').innerHTML=`<div class="agg" style="margin-top:6px">${card('themis',true)}${card('aergia',false)}</div>${ratio}${warn}`;
+    byoDone(btn,true);
+  }catch(e){byoFail(e);byoDone(btn);}
+}
+
 async function boot(){
   $('#process').onclick=processBoth;
   $('#runCorpus').onclick=runCorpus;
   $('#runScale').onclick=runScale;
+  BYO_SAMPLE_CATS.forEach(c=>$('#byoCats').appendChild(catRow(c.name,c.values)));
+  $('#byoDocs').value=BYO_SAMPLE_DOCS;
+  $('#byoAddCat').onclick=()=>$('#byoCats').appendChild(catRow());
+  $('#byoBuild').onclick=byoBuild;$('#byoDeploy').onclick=byoDeploy;
+  $('#byoVerify').onclick=byoVerify;$('#byoLoad').onclick=byoLoad;
   $('#message').addEventListener('input',()=>{if($('#catalog').value==='__custom')lastCustom=$('#message').value;});
   try{catalog=await (await fetch('/api/catalog')).json(); fillCatalog();}catch(e){}
   try{EFF=await (await fetch('/api/efficiency')).json(); renderEfficiency();}catch(e){}
