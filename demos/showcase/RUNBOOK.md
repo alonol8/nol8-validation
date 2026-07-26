@@ -39,6 +39,12 @@ facing version of all three.
 ## Two ways to run it
 
 - **The visual console** (below) — a live, on-brand web UI. Best for a customer room.
+  Its flagship **Bring Your Own Data** card runs a full POC on the customer's *own*
+  policy + documents (build → deploy → verify both engines → load their corpus).
+- **The BYO-data POC (CLI)** — `bash demos/showcase/byo-poc/run-byo-poc.sh [dir]`
+  (see `demos/showcase/byo-poc/README.md`). Point it at a customer's `values/` +
+  `documents/`; same pipeline, terminal output. This is the buyer-facing answer to
+  "a load generator is not a POC."
 - **The CLI tour** (Acts 1–2 further down) — same engine calls, terminal output.
   Best for a quick headless check or when you can't open a browser.
 
@@ -171,7 +177,7 @@ It samples the real cores each engine's data plane consumes on its host and prin
   Aergia (RE2 sw, :444)           11.2        8.2       19.4
 
   Software tax the FPGA eliminates:   ~8 CPU cores (the RE2 lexers)
-  Cores per 1k req/s:  Themis 0.39   vs   Aergia 0.74   →  ~1.9x
+  Cores per 1k req/s:  Themis 0.15   vs   Aergia 0.34   →  ~2.3x
 ```
 
 Both engines share the same data plane (Apollo, ~11 cores) — that's common cost, so
@@ -184,7 +190,7 @@ does not improve under load.
 **What to say:** "Same job, same correct output. The software path spends ~8 CPU
 cores on the matching, all the time, whether or not requests are flowing. The FPGA
 does it in silicon and hands those cores back. At fleet scale that's the power,
-core, and dollar line on your bill — roughly half the host CPU per request."
+core, and dollar line on your bill — ~2.3× less host CPU per request."
 
 ---
 
@@ -197,6 +203,7 @@ core, and dollar line on your bill — roughly half the host CPU per request."
 ## Where this sits
 
 - **Correctness at depth:** DP1–DP3 (oracle-verified: replacement, parity, payload).
-- **Throughput at load:** DP4 (`docs/DP4-THROUGHPUT-BRIEF.md`) — engines are close on
-  raw req/s (FPGA ~1.09x on small); the real separation is the CPU cost shown here.
+- **Throughput at load:** DP4 (`docs/DP4-THROUGHPUT-BRIEF.md`) — with the edge scaled
+  to 10 nodes, FPGA ~1.35× at conc 256 (8k rules), widening to ~2.15× under load;
+  software walls ~68k while the FPGA runs past 146k. Plus the CPU cost shown here.
 - **Scope & positioning memory:** listMatch-only today; substitution not enforcement.

@@ -1,5 +1,13 @@
 # Data Point 4 - Throughput at load
 
+> ⚠️ **SUPERSEDED — read `docs/DP4-THROUGHPUT-BRIEF.md` for current numbers.**
+> The throughput figures below were measured through a **single Argus edge node**
+> that was itself the bottleneck (both engines pinned ~27k). With the edge scaled to
+> 10 nodes the real numbers are far higher: **Themis ~76.6k vs Aergia ~56.9k @8k
+> rules (1.35×), widening to 2.15× under concurrency; software walls ~68k, FPGA >146k;
+> efficiency ~2.3× host CPU/req.** The method here is still valid; the absolute
+> numbers in the tables below are not. See the brief.
+
 **Use case:** how much can each engine actually take? DP1-DP3 prove correctness,
 parity, and payload reduction one request at a time - where ~97% of a call is
 network + TLS and the engine sits inside the measurement noise. DP4 does the

@@ -6,6 +6,32 @@ complete and honest**. This note is for whoever does the visual/interaction pass
 and the **integrity rules you must not break**. This is a benchmark shown to
 customers — a laundered number is worse than an ugly page.
 
+## ⛔ Do NOT break the test pipeline (read this first)
+
+This console drives a **real benchmark** against real engines. Under the pretty UI
+is machinery that actually **generates data, builds a policy, pushes/deploys the
+policy to both engines, drives load, and verifies output against the policy.** That
+machinery is the product proof — if the UI pass breaks it, the demo lies.
+
+**Your canvas is front-end only:** `static/index.html` (HTML/CSS/JS). Style it,
+re-lay-it-out, animate it, add controls — freely.
+
+**Off-limits without a heads-up (this is the "under the covers" logic):**
+- `server.py` endpoint **behavior** and the **JSON response shapes** (the Data
+  contract below) — the UI reads these; changing them silently breaks it.
+- Anything that calls `validate policy … --target …` (deploy), the policy **build +
+  safety guards** (`_byo_token/_byo_sanitize` — token≤15, ISSUE-004 overlaps), the
+  **corpus build**, `call_process` (the `/v1/process` call), or the **dp4driver**
+  invocation. These are the real test steps: make-policy → make-data → push-policy →
+  run → verify. Do not "simplify," stub, mock, or fake any of them.
+- The **deploy → settle → verify order** (the data plane loads the policy a few
+  seconds after "applied"; skipping the settle makes correct redaction look broken).
+
+If a visual idea needs a new/changed endpoint or a new data field, **add it to
+server.py deliberately and update the contract below** — don't reshape the UI around
+data that isn't really there. When unsure whether something is "UI" or "pipeline,"
+it's pipeline: ask.
+
 ## What the page is
 
 A dependency-free (Python stdlib) single-page console on `nol8-demo` that drives the
