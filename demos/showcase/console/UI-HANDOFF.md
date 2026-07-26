@@ -32,6 +32,13 @@ server.py deliberately and update the contract below** — don't reshape the UI 
 data that isn't really there. When unsure whether something is "UI" or "pipeline,"
 it's pipeline: ask.
 
+**Policy-state management (don't strip it):** the engines hold ONE deployed policy at
+a time. BYO deploys the customer policy; Scale deploys a matched policy (and restores).
+The built-in cards (process/batch) oracle against the STARTER policy, so they call
+`ensure_starter()` first — which re-deploys the starter (with settle) if a BYO/Scale run
+swapped it. Without this, the corpus card shows a false 0/N (right engine, wrong policy).
+Keep that call; don't assume a fixed policy is always live.
+
 **Deliberate design you must NOT "optimize":** `/api/byo/correctness` verifies an
 evenly-spaced **sample** (default 12) and runs **each engine sequentially on one
 reused keep-alive connection, the two engines in parallel.** This is not laziness —

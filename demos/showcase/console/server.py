@@ -82,6 +82,11 @@ BYO_POLICY = BYO_WORK / "byo-policy.nol"
 BYO_CORPUS = BYO_WORK / "byo-input.jsonl"
 MAX_TOKEN_LENGTH = 15  # runtime truncates tokens past 15 chars (ISSUE-005)
 
+# Which policy is live on the engines. The built-in cards (process/batch) oracle
+# against the STARTER policy, so if a BYO or scale run swapped it, they must re-sync
+# it first — otherwise they show 0 redacted (right engine, wrong policy).
+_STATE = {"policy": "starter"}
+
 
 def find_corpus() -> str | None:
     runs = sorted((ROOT / "artifacts" / "runs").glob("*/generated/input.jsonl"), reverse=True)
@@ -148,6 +153,7 @@ def scale(engines=("themis", "aergia"), payload="small", concurrency=256, durati
         # Always put the human-readable demo policy back for the redaction console.
         for eng in engines:
             _deploy(env, POLICY, eng)
+        _STATE["policy"] = "starter"
 
 POLICY_RULE = re.compile(r'^\s*"(?P<lit>.*)"\s*->\s*"(?P<tok>.*)"\s*;\s*$')
 
@@ -201,7 +207,24 @@ def call_process(engine: str, message: str, timeout: float = 15.0) -> str:
         return json.loads(resp.read().decode("utf-8"))["result"]["message"]
 
 
+def ensure_starter():
+    """Re-deploy the starter policy if a BYO/scale run swapped it out, so the built-in
+    demo cards (which verify against the starter values) don't show a false 0/N.
+    No-op when the starter is already live."""
+    if _STATE["policy"] == "starter":
+        return
+    for eng in ("themis", "aergia"):
+        try:
+            subprocess.run(["validate", "policy", "--file", str(POLICY), "--target", eng],
+                           capture_output=True, timeout=60)
+        except Exception:  # noqa: BLE001
+            pass
+    time.sleep(6)  # let the data plane load it before we verify
+    _STATE["policy"] = "starter"
+
+
 def process(engine: str, message: str) -> dict:
+    ensure_starter()
     expected = [(lit, tok) for lit, tok in PAIRS if lit and lit in message]
     t0 = time.perf_counter()
     processed = call_process(engine, message)
@@ -229,6 +252,7 @@ def process(engine: str, message: str) -> dict:
 
 def batch(engines=("themis", "aergia")) -> dict:
     """Run the whole catalog through each engine; return per-engine aggregates + rows."""
+    ensure_starter()
     out = {}
     for eng in engines:
         rows, lat = [], []
@@ -399,6 +423,7 @@ def byo_deploy(settle: int = 8) -> dict:
             status[eng] = "applied" if r.returncode == 0 else "failed"
         except Exception as exc:  # noqa: BLE001
             status[eng] = f"error: {exc}"
+    _STATE["policy"] = "byo"  # starter no longer live — built-in cards will re-sync it
     ok = all(v == "applied" for v in status.values())
     if ok:
         time.sleep(settle)  # let the data plane load the policy before we verify
