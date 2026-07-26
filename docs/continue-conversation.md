@@ -54,6 +54,22 @@ customer's OWN policy + documents.
 - **KEY LESSON baked in:** deploy returns "applied" before the data plane loads the
   policy — MUST settle (~8s) before verifying or first docs falsely show 0 matches.
 
+## Console BYO — functional pass done (2026-07-26 late)
+
+Before handing UI to Fable, did the pipeline-touching functional items myself:
+- **60-doc sample** prefilled (generated from templates × sample values, each distinct)
+  — real volume in the input.
+- **add/remove category** controls; "+ add category" **scaffolds** a suggested category
+  + example values (not a blank box).
+- **Correctness reliability fix (important finding):** verifying 50+ docs live was slow
+  AND flaky because **Aergia sheds/stalls under parallel connections from Python**
+  (measured: fine one run, 7/34 the next — its bistable character again). Fix:
+  `/api/byo/correctness` now verifies an evenly-spaced **sample (default 12)**, each
+  engine **sequential on one reused keep-alive conn, engines in parallel** — the pattern
+  Aergia tolerates (matches loop-probe 60/60). Reliable + sub-second. The **full corpus
+  is still exercised in the load step** (Go driver, which Aergia handles). This design is
+  DELIBERATE — flagged in UI-HANDOFF so Fable doesn't parallelize it back to flaky.
+
 ## 🎨 Console UI → hand to Fable (Jamie will drive)
 
 Good functional first pass; needs a real design/interaction pass. **`demos/showcase/

@@ -32,6 +32,15 @@ server.py deliberately and update the contract below** — don't reshape the UI 
 data that isn't really there. When unsure whether something is "UI" or "pipeline,"
 it's pipeline: ask.
 
+**Deliberate design you must NOT "optimize":** `/api/byo/correctness` verifies an
+evenly-spaced **sample** (default 12) and runs **each engine sequentially on one
+reused keep-alive connection, the two engines in parallel.** This is not laziness —
+the software engine (Aergia) is bistable and **sheds/stalls requests when hit with
+many parallel connections from this path** (measured: fine one run, 7/34 the next).
+Verifying the whole corpus, or fanning out per-doc parallel calls, reintroduces that
+flakiness. The full corpus IS exercised — in the load step, via the Go driver, which
+Aergia tolerates. Leave the correctness sampling + per-engine-sequential model alone.
+
 ## What the page is
 
 A dependency-free (Python stdlib) single-page console on `nol8-demo` that drives the
