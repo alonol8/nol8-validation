@@ -8,7 +8,6 @@ Every document, what it is for, and when to read it.
 |---|---|
 | [TROUBLESHOOTING.md](TROUBLESHOOTING.md) | **Something is broken right now.** Symptom, check, fix. |
 | [FINDINGS.md](FINDINGS.md) | **You want to know what we have found.** Every finding, stable IDs, one paragraph each, links to detail. |
-| [continue-conversation.md](continue-conversation.md) | You are resuming work. Project state, environments, what to do next. |
 
 Those three answer almost every question. The rest is detail they point to.
 

@@ -4,7 +4,6 @@
 |---|---|
 | **Fix something that is broken right now** | [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) |
 | **Know what we have found** - every issue, with IDs | [docs/FINDINGS.md](docs/FINDINGS.md) |
-| **Resume work** - project state and next actions | [docs/continue-conversation.md](docs/continue-conversation.md) |
 | Find any other document | [docs/README.md](docs/README.md) |
 
 > **Endpoint returning 503?** Most likely the data plane is paused awaiting a

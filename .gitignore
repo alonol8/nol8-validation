@@ -57,3 +57,8 @@ handoff/
 # BYO-POC generated artifacts (policy + corpus built from customer input)
 demos/showcase/byo-poc/**/generated/
 demos/showcase/console/byo_work/
+
+# Personal / candid working docs — not for shared repo (keep local)
+.claude/settings.json
+docs/continue-conversation.md
+docs/issues/internal/outbound-slack-comms.md

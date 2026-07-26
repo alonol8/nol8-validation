@@ -463,7 +463,6 @@ live path.
 | Document | Contains |
 |---|---|
 | `docs/FINDINGS.md` | **this file** - the index of everything |
-| `docs/continue-conversation.md` | project state, environment, how to resume work |
 | `docs/product/themis-product-limitations.md` | THM-1 to THM-7 and OPS-1 to OPS-3 in full |
 | `docs/issues/` | engineering-facing register: ISSUE-001..007, one sendable doc each, plus README index |
 | `docs/issues/internal/ISSUE-004-corruption-investigation.md` | THM-4 evidence and reproduction (internal) |
