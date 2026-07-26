@@ -38,10 +38,12 @@ BRAND = ROOT / "demos" / "benchmark" / "brand"
 POLICY = ROOT / "demos" / "policies" / "starter-known-values.nol"
 SCEN = HERE.parent / "scenarios"
 PORT = int(os.environ.get("CONSOLE_PORT", "8770"))
-# Bind all interfaces by default so the console is reachable over the VPN
-# (http://<box-ip>:PORT). Set CONSOLE_HOST=127.0.0.1 to restrict to localhost
-# (then reach it only via an SSH tunnel).
-HOST = os.environ.get("CONSOLE_HOST", "0.0.0.0")
+# Bind localhost only by default. The console has no auth and CAN deploy policies
+# (a deploy replaces the whole ruleset, ISSUE-002), so anyone reachable on this
+# port could wipe the tenant — do not expose it on all interfaces. Reach it via
+# the SSH tunnel: `ssh -f -N -L 8770:localhost:8770 nol8-demo`. Set
+# CONSOLE_HOST=0.0.0.0 explicitly only when you intend to expose it over the VPN.
+HOST = os.environ.get("CONSOLE_HOST", "127.0.0.1")
 
 
 def lan_ip() -> str:
