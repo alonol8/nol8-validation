@@ -105,11 +105,28 @@ has the URL/login (fleet scales; was 1 overnight, now 10). Brand guide
   prints an `errbreak:` line (dial/timeout/reset/eof/http4xx/http5xx/other) whenever
   a cell has errors. CSV schema unchanged (console/build-rulecount.py still parse).
 
-## Console — BUILT, PARKED → resume as the BYO-POC (step 2)
+## BYO-data POC — BUILT (CLI + console UI), tested, committed
 
-`demos/showcase/console/` (stdlib server + on-brand dark UI on nol8-demo). Scale
-numbers should be re-based on the corrected 10-Argus reality. Resume it as the
-BYO-data POC per step 2. Also `demos/showcase/` CLI tour + RUNBOOK.
+The buyer-facing answer to "a load generator is not a POC." Prove it on the
+customer's OWN policy + documents.
+- **CLI:** `demos/showcase/byo-poc/` — `run-byo-poc.sh [dir] [--skip-load]`. Ingest
+  their `values/*.txt` + `documents/` → build safe policy (token≤15, ISSUE-004
+  overlaps dropped) → deploy (settle for data-plane propagation) → oracle-verify
+  both engines + parity → load-test their corpus → summary. Bundled `sample/`
+  ("Meridian Financial") passes 18/18 both engines, 6/6 identical, load ~1.30×.
+- **Console UI:** flagship BYO card in `demos/showcase/console/` — paste values +
+  docs, staged buttons build→deploy→verify→load, each revealing output; prefilled
+  with a sample. Four endpoints in server.py (`/api/byo/build|deploy|correctness|
+  load`). Verified end-to-end (Themis 156k vs Aergia 112k = 1.39× on 2 docs, with
+  the cache-fairness warning).
+- **KEY LESSON baked in:** deploy returns "applied" before the data plane loads the
+  policy — MUST settle (~8s) before verifying or the first docs falsely show 0
+  matches (byo_poc caught this live). The console/rulecount scripts settle 6-8s.
+- **Console is RUNNING** on nol8-demo (tmux `console`, 0.0.0.0:8770; starter policy
+  restored). Reach it: `ssh -L 8770:localhost:8770 nol8-demo` → http://localhost:8770.
+- **TODO:** the console's older "Scale" card numbers still reflect pre-10-Argus;
+  re-base them. Add a BYO line to `demos/showcase/RUNBOOK.md`. Also `demos/showcase/`
+  CLI tour + RUNBOOK exist.
 
 ## Memories to respect
 
