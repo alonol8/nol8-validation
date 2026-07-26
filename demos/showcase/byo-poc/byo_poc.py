@@ -4,7 +4,7 @@ proven end to end on the live engines.
 
 A load generator is not a POC: a customer evaluating NOL8 wants to answer three
 questions with THEIR inputs, not ours —
-  1. Does it redact MY data correctly?      -> oracle-verified on their docs
+  1. Does it redact MY data correctly?      -> byte-for-byte oracle on their docs
   2. What does it cost at MY scale?          -> ~8-core software tax (efficiency)
   3. Does it hold up at MY volume?           -> load pass on their own corpus
 
@@ -37,8 +37,17 @@ import time
 import urllib.request
 from pathlib import Path
 
+# The correctness stage adjudicates against the framework's independent oracle
+# (leftmost-longest non-overlapping literal replacement), the SAME one verify-
+# oracle.py uses — not a substring approximation. byo_poc.py lives four levels
+# under the repo root; put the root on the path so `framework` imports.
+REPO_ROOT = Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(REPO_ROOT))
+from framework.policy.oracle import (  # noqa: E402
+    build_matcher, oracle_output, parse_policy, substring_pass,
+)
+
 MAX_TOKEN_LENGTH = 15  # runtime truncates tokens past 15 chars (ISSUE-005)
-POLICY_RULE = re.compile(r'^\s*"(?P<lit>.*)"\s*->\s*"(?P<tok>.*)"\s*;\s*$')
 
 BAR = "─" * 72
 
@@ -135,17 +144,6 @@ def render_policy(categories) -> str:
     return "\n".join(lines)
 
 
-def policy_pairs(path: Path) -> list[tuple[str, str]]:
-    pairs = []
-    for line in path.read_text(encoding="utf-8").splitlines():
-        if line.lstrip().startswith("#"):
-            continue
-        m = POLICY_RULE.match(line)
-        if m:
-            pairs.append((m.group("lit"), m.group("tok")))
-    return pairs
-
-
 # ---------------------------------------------------------------- corpus build
 
 def load_documents(docs_dir: Path) -> list[str]:
@@ -218,21 +216,35 @@ def endpoint_for(engine: str) -> str:
 
 # ---------------------------------------------------------------- stages
 
-def stage_correctness(docs, pairs, engines) -> dict:
-    """Run every doc through each engine, oracle-verify, and check both engines
-    agree. Returns aggregates + per-doc rows."""
-    def norm(s):
-        return re.sub(r"\s+", " ", s).strip()
+def stage_correctness(docs, rules, matcher, engines) -> dict:
+    """Adjudicate each engine's output BYTE-FOR-BYTE against the independent
+    oracle (framework.policy.oracle: leftmost-longest, non-overlapping literal
+    replacement). "Correct" means the engine produced exactly the oracle's
+    output — right tokens, right positions, nothing else in the document touched.
+
+    For each doc we also compute the WEAKER substring verdict ("every in-scope
+    literal is gone and its token appears somewhere") on the SAME engine output,
+    so the summary can report where the two methods disagree — i.e. documents the
+    old substring check would have passed that the oracle rejects. A substring
+    pass with an oracle fail is a real defect the old POC would have called green.
+    """
+    # A disagreement excerpt is truncated: this is the customer's own document
+    # text, so we keep only enough to show the defect, never the full document,
+    # and never write it to an artifact.
+    EXCERPT = 160
 
     rows = []
-    totals = {e: {"verified": 0, "in_scope": 0} for e in engines}
+    totals = {e: {"exact": 0, "docs": 0, "substr_ok": 0} for e in engines}
+    disagreements = []  # (doc#, engine, oracle_excerpt, engine_excerpt)
     parity_ok = 0
     parity_total = 0
     for i, original in enumerate(docs):
-        in_scope = [(l, t) for l, t in pairs if l and l in original]
-        near = [(l, t) for l, t in pairs if l and l not in original and norm(l) in norm(original)]
+        expected = oracle_output(original, matcher, rules)
+        # In-scope literal->token pairs the oracle actually replaces in this doc.
+        substr_pairs = [(lit, tok) for lit, tok in rules.items() if lit in original]
+        in_scope = len(substr_pairs)
         msg_bytes = len(original.encode("utf-8"))
-        occurrences = sum(original.count(l) for l, _ in in_scope)
+        occurrences = sum(original.count(lit) for lit, _ in substr_pairs)
         density = occurrences / (msg_bytes / 1024) if msg_bytes else 0.0
         outputs = {}
         row_engines = {}
@@ -243,20 +255,26 @@ def stage_correctness(docs, pairs, engines) -> dict:
                 row_engines[e] = {"error": str(exc)[:120]}
                 continue
             outputs[e] = processed
-            checks = [(l in original and l not in processed and t in processed) for l, t in in_scope]
-            verified = sum(1 for c in checks if c)
-            totals[e]["verified"] += verified
-            totals[e]["in_scope"] += len(in_scope)
-            row_engines[e] = {"verified": verified, "in_scope": len(in_scope), "ok": verified == len(in_scope)}
+            exact = processed == expected  # the real correctness claim
+            # The old substring check, kept only to flag divergence from the
+            # oracle (see framework.policy.oracle.substring_pass).
+            substr_ok = substring_pass(processed, substr_pairs)
+            totals[e]["docs"] += 1
+            totals[e]["exact"] += 1 if exact else 0
+            totals[e]["substr_ok"] += 1 if substr_ok else 0
+            if substr_ok and not exact:
+                disagreements.append((i + 1, e, expected[:EXCERPT], processed[:EXCERPT]))
+            row_engines[e] = {"exact": exact, "substr_ok": substr_ok, "in_scope": in_scope}
         if len(outputs) == 2:
             parity_total += 1
             if len(set(outputs.values())) == 1:
                 parity_ok += 1
-        rows.append({"doc": i + 1, "bytes": msg_bytes, "in_scope": len(in_scope),
-                     "density": round(density, 1), "near_misses": len(near),
+        rows.append({"doc": i + 1, "bytes": msg_bytes, "in_scope": in_scope,
+                     "density": round(density, 1),
                      "engines": row_engines,
                      "identical": len(outputs) == 2 and len(set(outputs.values())) == 1})
-    return {"rows": rows, "totals": totals, "parity_ok": parity_ok, "parity_total": parity_total}
+    return {"rows": rows, "totals": totals, "parity_ok": parity_ok,
+            "parity_total": parity_total, "disagreements": disagreements}
 
 
 def run_driver(driver: Path, engine: str, corpus: Path, concurrency: int,
@@ -359,25 +377,37 @@ def main() -> int:
         time.sleep(args.settle)
 
     # 4) correctness ------------------------------------------------------
-    hr("STEP 4 · Correctness on the customer's data (oracle-verified, both engines)")
-    pairs = policy_pairs(policy)
-    cres = stage_correctness(docs, pairs, engines)
-    print(f"  {'doc':>4s} {'bytes':>7s} {'in-scope':>9s} {'matches/KB':>11s}  " +
+    hr("STEP 4 · Correctness on the customer's data (byte-for-byte oracle, both engines)")
+    rules = parse_policy(policy)
+    matcher = build_matcher(rules)
+    cres = stage_correctness(docs, rules, matcher, engines)
+    print(f"  {'doc':>4s} {'bytes':>7s} {'in-scope':>9s} {'match/KB':>9s}  " +
           "  ".join(f"{ENGINES[e]['label'].split()[0]:>8s}" for e in engines) + "   identical")
     for r in cres["rows"]:
         cells = []
         for e in engines:
             ev = r["engines"].get(e, {})
-            cells.append(f"{ev.get('verified','-')}/{ev.get('in_scope','-')}" if "error" not in ev else "ERR")
+            if "error" in ev:
+                cells.append("ERR")
+            else:
+                cells.append("✓ ok" if ev["exact"] else "✗ MISM")
         idc = "✓" if r["identical"] else ("—" if len(engines) < 2 else "✗")
-        print(f"  {r['doc']:>4d} {r['bytes']:>7d} {r['in_scope']:>9d} {r['density']:>11.1f}  " +
+        print(f"  {r['doc']:>4d} {r['bytes']:>7d} {r['in_scope']:>9d} {r['density']:>9.1f}  " +
               "  ".join(f"{c:>8s}" for c in cells) + f"   {idc}")
     for e in engines:
         t = cres["totals"][e]
-        pct = (100.0 * t["verified"] / t["in_scope"]) if t["in_scope"] else 0.0
-        print(f"  {ENGINES[e]['label']}: {t['verified']}/{t['in_scope']} governed values verified ({pct:.1f}%).")
+        pct = (100.0 * t["exact"] / t["docs"]) if t["docs"] else 0.0
+        print(f"  {ENGINES[e]['label']}: {t['exact']}/{t['docs']} documents match the oracle byte-for-byte ({pct:.1f}%).")
     if len(engines) == 2:
         print(f"  Output parity: {cres['parity_ok']}/{cres['parity_total']} documents identical across both engines.")
+    # Where the weaker substring check would have disagreed with the oracle —
+    # documents the OLD POC would have reported as passing.
+    if cres["disagreements"]:
+        print(f"  ⚠  {len(cres['disagreements'])} document/engine result(s) PASS a substring check but FAIL the oracle:")
+        for doc_n, e, oracle_excerpt, engine_excerpt in cres["disagreements"][:8]:
+            print(f"       • doc {doc_n} on {ENGINES[e]['label']} (excerpt):")
+            print(f"           oracle: {oracle_excerpt!r}")
+            print(f"           engine: {engine_excerpt!r}")
 
     # 5) load -------------------------------------------------------------
     if not args.skip_load:
@@ -413,9 +443,10 @@ def main() -> int:
 
     # 6) summary ----------------------------------------------------------
     hr("POC SUMMARY — the customer's three questions, on the customer's data")
-    okc = all(cres["totals"][e]["verified"] == cres["totals"][e]["in_scope"] for e in engines)
+    okc = all(cres["totals"][e]["exact"] == cres["totals"][e]["docs"] and cres["totals"][e]["docs"] > 0
+              for e in engines)
     print(f"  1. Redacts MY data correctly?   {'✓ yes' if okc else '✗ see mismatches above'} "
-          f"— oracle-verified against the customer's own policy"
+          f"— every document matches an independent oracle byte-for-byte"
           + (f"; {cres['parity_ok']}/{cres['parity_total']} identical on both engines" if len(engines) == 2 else ""))
     print(f"  2. Costs what at MY scale?      the FPGA does the matching in silicon — ~8 CPU cores")
     print(f"                                  the software path burns on the RE2 lexers "
