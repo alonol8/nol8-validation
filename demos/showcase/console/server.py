@@ -71,16 +71,28 @@ ENGINES = {
                "token": os.environ.get("AERGIA_TOKEN", "")},
 }
 
-# Efficiency numbers measured on the engine hosts (DPDK poll-mode → constant under
-# load; validated: F2 apollo held ~11.3 cores while sustaining ~27k req/s). See
-# docs/DP4-THROUGHPUT-BRIEF.md "efficiency result".
-EFFICIENCY = {
-    "themis": {"apollo": 11.3, "matching": 0.0, "total": 11.3, "box_cores": 24,
-               "rps": 76600, "matching_label": "FPGA / 0"},
-    "aergia": {"apollo": 11.2, "matching": 8.0, "total": 19.2, "box_cores": 32,
-               "rps": 56900, "matching_label": "8.0 (RE2 lexers)"},
-    "tax_cores": 8.0, "ratio": 2.3,  # cores/req: 0.15 vs 0.34 → ~2.3x (10-Argus throughput)
-}
+# Efficiency numbers: the SINGLE SOURCE OF TRUTH is
+# artifacts/evidence/efficiency-constants.json (cores MEASURED with repeats — see
+# efficiency-*-20260726.csv). Cores + throughput are loaded from there; the console
+# DERIVES cores/1k and the ratio for display so there is no hardcoded copy to drift.
+# The authoritative ratio in the JSON is null until the under-load confirmation
+# (findings 009 item 5); the derived display value is flagged provisional until then.
+def _load_efficiency():
+    c = json.loads((ROOT / "artifacts" / "evidence" / "efficiency-constants.json").read_text(encoding="utf-8"))
+    eff = {}
+    for e in ("themis", "aergia"):
+        rps = c["throughput_rps"][e]
+        eff[e] = {"apollo": c[e]["apollo"], "matching": c[e]["matching"],
+                  "total": c[e]["total"], "box_cores": c[e]["box_cores"], "rps": rps,
+                  "matching_label": c[e]["matching_label"],
+                  "cores_per_1k": round(c[e]["total"] / (rps / 1000.0), 3)}
+    eff["tax_cores"] = c["tax_cores"]
+    eff["ratio"] = round(eff["aergia"]["cores_per_1k"] / eff["themis"]["cores_per_1k"], 2)
+    eff["cores_load_state"] = c["cores_load_state"]
+    eff["provisional"] = c.get("ratio") is None  # true until item 5 confirms under load
+    return eff
+
+EFFICIENCY = _load_efficiency()
 
 DRIVER = ROOT / "demos" / "benchmark" / "datapoint4" / "results" / "dp4driver"
 

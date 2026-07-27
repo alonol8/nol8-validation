@@ -1,0 +1,30 @@
+{
+  "_note": "SINGLE SOURCE OF TRUTH for efficiency constants (findings 009 item 3). Cores are MEASURED (median of 5 reps). Multiplier/ratio are NULL pending the under-load confirmation (findings 009 item 5); do not hardcode elsewhere.",
+  "cores_source_csv": "artifacts/evidence/efficiency-idle-20260726.csv (+ -under-load-20260726.csv when item 5 lands)",
+  "cores_load_state": "idle (poll-mode; under-load confirmation pending item 5)",
+  "themis": {
+    "apollo": 11.17,
+    "matching": 0.0,
+    "total": 11.17,
+    "box_cores": 24,
+    "matching_label": "FPGA (in silicon)"
+  },
+  "aergia": {
+    "apollo": 11.27,
+    "matching": 8.17,
+    "total": 19.44,
+    "box_cores": 32,
+    "matching_label": "8.17 (RE2 lexers)"
+  },
+  "tax_cores": 8.27,
+  "throughput_rps_source": "rulecount-2k4k6k8k-clean-20260726.csv, 8k cell medians (conc256, small)",
+  "throughput_rps": {
+    "themis": 76169,
+    "aergia": 55939
+  },
+  "cores_per_1k_req": {
+    "themis": null,
+    "aergia": null
+  },
+  "ratio": null
+}

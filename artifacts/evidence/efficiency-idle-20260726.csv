@@ -1,0 +1,16 @@
+load,rep,host,engine,process,cores
+idle,1,themis-demo,themis,apollo,11.09
+idle,1,aergia-demo,aergia,apollo,11.27
+idle,1,aergia-demo,aergia,aergia.real,8.17
+idle,2,themis-demo,themis,apollo,11.17
+idle,2,aergia-demo,aergia,apollo,11.27
+idle,2,aergia-demo,aergia,aergia.real,6.49
+idle,3,themis-demo,themis,apollo,10.33
+idle,3,aergia-demo,aergia,apollo,9.36
+idle,3,aergia-demo,aergia,aergia.real,8.19
+idle,4,themis-demo,themis,apollo,11.33
+idle,4,aergia-demo,aergia,apollo,11.21
+idle,4,aergia-demo,aergia,aergia.real,8.16
+idle,5,themis-demo,themis,apollo,11.31
+idle,5,aergia-demo,aergia,apollo,11.27
+idle,5,aergia-demo,aergia,aergia.real,8.17

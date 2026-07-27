@@ -6,19 +6,45 @@ would be a density effect rather than a rule-count effect. Computed offline with
 framework oracle over each rule count's own corpus. Raw: `corpus-density-20260726.json`.
 Script: `demos/benchmark/datapoint4/corpus_density.py`.
 
-## Result — match density is FLAT across rule counts
+## Two objects — measure the RIGHT one (findings 009)
 
-| rules | matches/KB | near-misses/KB | distinct bodies | avg bytes | diversity |
+The first pass measured density over the **full source documents** (avg ~115 KB). But
+the driver sends **small-band bodies** (≤4096-byte messages, ~2.6 KB). Those are
+different objects by ~45×, so the source figure does not describe what the benchmark
+scanned. Both are below; **the sent-body row is the one that describes the ratios.**
+
+### A. SENT bodies — what the driver actually scanned (the relevant object)
+
+Replicating loadCorpus (band by message byte-length, first 4,000 in file order).
+Raw: `corpus-density-sent-20260726.json`.
+
+| rules | matches/request | matches/KB | % requests w/ a match | avg msg bytes |
+|---|---|---|---|---|
+| 2,000 | 11.16 | 4.76 | 73.8% | 2,398 |
+| 4,000 | 11.24 | 4.82 | 74.1% | 2,390 |
+| 6,000 | 11.13 | 4.77 | 73.7% | 2,388 |
+| 8,000 | 11.09 | 4.82 | 73.4% | 2,356 |
+
+**~4.8 matches/KB, ~11 matches/request, ~74% of requests contain a match** — a real
+redaction workload, not "scan and find nothing." And **flat across rule counts** (4.76–
+4.82), so the Aergia throughput decline in `rulecount-2k4k6k8k-clean-20260726.csv` is a
+**ruleset/automaton-size effect, not a density artifact** — now confirmed on the object
+the ratios were measured on. **Alon's ~5 matches/KB estimate was accurate** (the earlier
+0.12 made it look conservative; that was the wrong object).
+
+### B. SOURCE documents — the full generated corpus (context only)
+
+Raw: `corpus-density-20260726.json`.
+
+| rules | matches/KB | near/KB | distinct | avg bytes | diversity |
 |---|---|---|---|---|---|
 | 2,000 | 0.1253 | 0.0 | 15,000 | 115,074 | 1.00 |
 | 4,000 | 0.1243 | 0.0 | 12,000\* | 117,513 | 1.00 |
 | 6,000 | 0.1200 | 0.0 | 15,000 | 121,350 | 1.00 |
 | 8,000 | 0.1241 | 0.0 | 15,000 | 117,502 | 1.00 |
 
-Range 0.120–0.125 matches/KB, **no upward trend with rule count** (6k is the lowest).
-So the generator holds match density roughly constant as the ruleset grows, and the
-throughput trend in `rulecount-2k4k6k8k-clean-20260726.csv` is attributable to
-**ruleset / automaton size, not corpus density**. The findings-007/008 assumption holds.
+Also flat, but this is density over the large source docs — not the sent bodies. Kept
+for provenance; do not quote it as the benchmark's density.
 
 ## Method notes
 
