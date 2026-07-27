@@ -30,7 +30,12 @@ mkdir -p "$RESULTS"
 # transient shared-host noise without regenerating.
 RULE_COUNTS="${DP4_RULE_COUNTS:-1000 2000 4000 6000 8000 10000 12000}"
 REPS="${DP4_RC_REPS:-3}"
-RECORDS="${DP4_RC_RECORDS:-15000}"    # ~40% small band -> >=4,000 distinct small bodies
+# ~40% of records land in the small band, so this yields >=20,000 distinct small
+# bodies. The driver round-robins whatever it holds, and a working set small
+# enough to be replayed hundreds of times inside one measurement window is not
+# the working set a live endpoint sees.
+RECORDS="${DP4_RC_RECORDS:-50000}"
+CAP_SMALL="${DP4_RC_CAP_SMALL:-20000}"
 CONC="${DP4_RC_CONC:-256}"            # fixed, near Themis small peak and well-parallelized
 PAYLOAD="${DP4_RC_PAYLOAD:-small}"
 DURATION="${DP4_RC_DURATION:-15}"
@@ -68,7 +73,7 @@ for R in $RULE_COUNTS; do
         --engine "$engine" --label "$engine" --input "$INPUT" \
         --concurrency "$CONC" --payloads "$PAYLOAD" \
         --warmup "$WARMUP" --duration "$DURATION" \
-        --cap-small 4000 --cap-medium 4000 --cap-large 4000 \
+        --cap-small "$CAP_SMALL" --cap-medium 4000 --cap-large 4000 \
         --output "$RESULTS/rc_${engine}.csv" | sed 's/^/      /'
       [ -f "$RESULTS/rc_${engine}.csv" ] || continue
       if [ ! -f "$OUT" ]; then echo "rule_count,rep,$(head -1 "$RESULTS/rc_${engine}.csv")" > "$OUT"; fi
