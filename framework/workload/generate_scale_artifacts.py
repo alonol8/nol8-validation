@@ -17,6 +17,7 @@ from framework.policy.matching import (
     resolve_non_overlapping,
 )
 from framework.policy.overlap import find_contained_literals
+from framework.scenarios.database_export import build_export
 from framework.scenarios.placement import place_rules
 from framework.scenarios.support_ticket import build_support_ticket
 from framework.workload import near_miss as near_miss_module
@@ -778,7 +779,8 @@ def generate_scale_artifacts(
                 )
 
                 realistic_scenario = (
-                    size_profile_name == "small"
+                    scenario_name == "database_export"
+                    or size_profile_name == "small"
                     and (
                         (
                             scenario_name == "customer_record"
@@ -790,7 +792,23 @@ def generate_scale_artifacts(
                         )
                     )
                 )
-                if (
+                export_text: str | None = None
+                if scenario_name == "database_export":
+                    # A bulk export is a CSV file, not a record that happens to
+                    # be serialised as one, so it bypasses the serializer and is
+                    # used as the document verbatim.
+                    export = build_export(
+                        document_id,
+                        rng,
+                        rules,
+                        match_count,
+                        target_size,
+                        near_miss_supply,
+                    )
+                    export_text = export.text
+                    selected_rules = list(export.placed)
+                    record = {}
+                elif (
                     scenario_name == "customer_record"
                     and format_name in {"json", "csv"}
                     and size_profile_name == "small"
@@ -838,7 +856,7 @@ def generate_scale_artifacts(
                         scenario_name,
                         target_size,
                     )
-                message = _serialize_record(
+                message = export_text if export_text is not None else _serialize_record(
                     record=record,
                     format_name=format_name,
                     scenario_name=scenario_name,

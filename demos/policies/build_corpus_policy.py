@@ -51,6 +51,12 @@ from framework.policy.word_reduction import reduction_rules  # noqa: E402
 
 MAX_REPLACEMENT_LENGTH = 15
 
+# The Aergia rule record stores the pattern in a fixed 108-byte field
+# (`dumputil --aergia`, pattern[108]). A longer literal risks being truncated on
+# that side only, which would leave the two engines running different policies
+# and quietly invalidate every comparison drawn from the run.
+MAX_LITERAL_BYTES = 100
+
 # Never removed or rewritten, whatever the corpus statistics say. Deleting a
 # negation does not shorten a sentence, it reverses it.
 PROTECTED = frozenset({
@@ -231,6 +237,8 @@ def main() -> int:
     candidates: list[tuple[str, str, float, float, str]] = []
 
     def consider(literal: str, replacement: str, origin: str) -> None:
+        if len(literal.encode("utf-8")) > MAX_LITERAL_BYTES:
+            return
         rate = occurrences_per_kb(lowered, literal, kilobytes)
         if rate < args.min_per_kb:
             return
