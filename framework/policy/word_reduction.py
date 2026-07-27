@@ -139,14 +139,53 @@ STOPWORDS: tuple[str, ...] = (
 )
 
 
-def reduction_rules() -> list[tuple[str, str]]:
+# The function words that make up the bulk of English. Removing them is
+# textbook preprocessing before embedding, and it is where the volume is: the
+# entries above are the formal register and are individually rare, while these
+# are a quarter to a third of every document.
+#
+# The trade is explicit and belongs to the operator. Conservative reduction
+# leaves prose a person can still read; this does not, and is only appropriate
+# where the output is headed for an embedding pipeline rather than a reader.
+# Some retrieval models also do worse without function words, so this is a cost
+# decision, not a free win.
+#
+# Negations are deliberately absent - "not", "no", "nor", "never". They are
+# structurally stopwords and semantically the opposite: dropping them turns a
+# denial into an affirmation, and no token saving is worth inverting the meaning
+# of a sentence before it is indexed.
+FUNCTION_WORDS: tuple[str, ...] = (
+    "a", "an", "and", "are", "as", "at", "be", "been", "being", "but", "by",
+    "can", "could", "did", "do", "does", "for", "from", "had", "has", "have",
+    "he", "her", "here", "him", "his", "how", "i", "if", "in", "into", "is",
+    "it", "its", "may", "me", "might", "much", "must", "my", "of", "on", "one",
+    "or", "our", "out", "over", "own", "she", "should", "so", "some", "such",
+    "than", "that", "the", "their", "them", "then", "there", "these", "they",
+    "this", "those", "through", "to", "up", "was", "we", "were", "what", "when",
+    "where", "which", "while", "who", "why", "will", "with", "would", "you",
+    "your",
+)
+
+
+def reduction_rules(profile: str = "conservative") -> list[tuple[str, str]]:
     """Every reduction as a (literal, replacement) pair, space-delimited.
+
+    `conservative` rewrites and drops only where the output remains readable
+    prose. `aggressive` adds function-word removal on top, which is where most
+    of the token saving is and which produces text meant for a pipeline rather
+    than a person.
 
     Sorted longest-first so a reader of the generated policy sees the phrases
     before the words they contain. The engine resolves overlaps leftmost-longest
     regardless of file order, so " in order to " wins over the " to " inside it -
     which is the intended result, and the reason phrases are worth having.
     """
+    if profile not in ("conservative", "aggressive"):
+        raise ValueError(
+            f"Unknown reduction profile {profile!r}; "
+            "expected 'conservative' or 'aggressive'."
+        )
+
     pairs: list[tuple[str, str]] = []
     for phrase, replacement in PLAINER_PHRASES.items():
         pairs.append((f" {phrase} ", f" {replacement} "))
@@ -154,6 +193,14 @@ def reduction_rules() -> list[tuple[str, str]]:
         pairs.append((f" {word} ", f" {replacement} "))
     for word in STOPWORDS:
         pairs.append((f" {word} ", " "))
+
+    if profile == "aggressive":
+        existing = {literal for literal, _ in pairs}
+        for word in FUNCTION_WORDS:
+            literal = f" {word} "
+            if literal not in existing:
+                pairs.append((literal, " "))
+
     pairs.sort(key=lambda pair: (-len(pair[0]), pair[0]))
     return pairs
 
