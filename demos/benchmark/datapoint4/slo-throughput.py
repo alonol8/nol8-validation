@@ -21,8 +21,16 @@ Two honest failure modes are reported rather than hidden:
 * an engine still under the budget at the highest concurrency was not pushed far
   enough, and its figure is a floor rather than an answer.
 
+Throughput is only comparable between engines doing the same job correctly, so
+pass --expected and every response in every cell is checked against the oracle.
+Without it the driver checks HTTP status alone, and an engine returning wrong
+output scores a throughput figure like any other.
+
+    python demos/benchmark/datapoint4/expected-digests.py \\
+        --policy <policy.nol> --corpus <corpus.jsonl> --out /tmp/c.digests
+
     python demos/benchmark/datapoint4/slo-throughput.py \\
-        --input demos/benchmark/datapoint4/results/enron.jsonl \\
+        --input <corpus.jsonl> --expected /tmp/c.digests \\
         --engines themis,aergia --budgets 10,25,50,100
 """
 from __future__ import annotations
@@ -30,9 +38,14 @@ from __future__ import annotations
 import argparse
 import csv
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
+
+# The driver reports verification on stdout rather than in the CSV. Each cell is
+# a separate driver process, so these counts are per-cell rather than cumulative.
+_VERIFIED = re.compile(r"verified (\d+) responses: (\d+) correct, (\d+) WRONG")
 
 HERE = Path(__file__).resolve().parent
 DRIVER = HERE / "results" / "dp4driver"
@@ -41,9 +54,12 @@ DRIVER = HERE / "results" / "dp4driver"
 class Cell:
     """One (engine, concurrency) measurement."""
 
-    __slots__ = ("engine", "concurrency", "rps", "p99", "mib_s", "errors", "mean")
+    __slots__ = ("engine", "concurrency", "rps", "p99", "mib_s", "errors", "mean",
+                 "verified", "wrong")
 
     def __init__(self, row: dict[str, str]) -> None:
+        self.verified = 0
+        self.wrong = 0
         self.engine = row["engine"]
         self.concurrency = int(row["concurrency"])
         self.rps = float(row["rps"])
@@ -67,6 +83,8 @@ def run_cell(engine: str, concurrency: int, args) -> Cell | None:
         "--duration", str(args.duration),
         "--output", str(output),
     ]
+    if args.expected:
+        command += ["--expected", str(args.expected)]
     print(f"  {engine:8s} concurrency {concurrency:5d} ... ", end="", flush=True)
     result = subprocess.run(command, capture_output=True, text=True)
     if result.returncode != 0 or not output.exists():
@@ -79,8 +97,16 @@ def run_cell(engine: str, concurrency: int, args) -> Cell | None:
         print("no data row (corpus may miss this payload band)")
         return None
     cell = Cell(rows[0])
+    verified = _VERIFIED.search(result.stdout)
+    if verified:
+        cell.verified = int(verified.group(1))
+        cell.wrong = int(verified.group(3))
+    suffix = ""
+    if cell.verified:
+        suffix = (f"   !! {cell.wrong} WRONG of {cell.verified:,}"
+                  if cell.wrong else f"   {cell.verified:,} verified")
     print(f"{cell.rps:9,.0f} req/s   p99 {cell.p99:7.1f} ms   "
-          f"{cell.mib_s:6.1f} MiB/s   err {cell.errors}")
+          f"{cell.mib_s:6.1f} MiB/s   err {cell.errors}{suffix}")
     return cell
 
 
@@ -137,6 +163,13 @@ def main() -> int:
     parser.add_argument("--cap", type=int, default=20000)
     parser.add_argument("--warmup", type=int, default=5)
     parser.add_argument("--duration", type=int, default=15)
+    parser.add_argument(
+        "--expected", type=Path, default=None,
+        help="digest file from expected-digests.py. Every response in every "
+             "cell is then checked against the oracle, and a budget figure is "
+             "withheld for any engine that returned wrong output - throughput "
+             "for an engine doing the wrong job is not a comparable number",
+    )
     parser.add_argument("--csv", type=Path, default=HERE / "results" / "slo.csv")
     args = parser.parse_args()
 
@@ -163,12 +196,36 @@ def main() -> int:
     with args.csv.open("w", newline="") as handle:
         writer = csv.writer(handle)
         writer.writerow(["engine", "concurrency", "rps", "p99_ms", "mib_s",
-                         "mean_ms", "errors"])
+                         "mean_ms", "errors", "verified", "wrong"])
         for engine in engines:
             for cell in sorted(measured[engine], key=lambda c: c.concurrency):
                 writer.writerow([cell.engine, cell.concurrency, f"{cell.rps:.1f}",
                                  f"{cell.p99:.3f}", f"{cell.mib_s:.2f}",
-                                 f"{cell.mean:.3f}", cell.errors])
+                                 f"{cell.mean:.3f}", cell.errors,
+                                 cell.verified, cell.wrong])
+
+    # A cell that returned wrong output has no comparable throughput: it is a
+    # rate of producing something else. Rather than quietly averaging it in, the
+    # engine's whole column is withheld and the reason printed.
+    unverified: dict[str, str] = {}
+    for engine in engines:
+        cells = measured[engine]
+        if args.expected is None:
+            unverified[engine] = "not verified - no --expected given"
+        elif any(cell.wrong for cell in cells):
+            total = sum(cell.wrong for cell in cells)
+            checked = sum(cell.verified for cell in cells)
+            unverified[engine] = (
+                f"{total:,} of {checked:,} responses did not match the oracle"
+            )
+        elif not any(cell.verified for cell in cells):
+            unverified[engine] = "verification produced no counts"
+
+    if unverified:
+        print("\nVerification")
+        for engine in engines:
+            note = unverified.get(engine)
+            print(f"  {engine:8s} {note if note else 'every response matched the oracle'}")
 
     print(f"\nThroughput inside a p99 budget  (corpus {args.input.name})")
     header = "  p99 budget  " + "".join(f"{e:>16s}" for e in engines)
@@ -182,6 +239,11 @@ def main() -> int:
         notes: list[str] = []
         cells = []
         for engine in engines:
+            if engine in unverified and "did not match" in unverified[engine]:
+                values.append(None)
+                notes.append("withheld: output did not match the oracle")
+                cells.append(f"{'WRONG':>16s}")
+                continue
             value, note = throughput_at_budget(measured[engine], budget)
             values.append(value)
             notes.append(note)
@@ -199,6 +261,11 @@ def main() -> int:
     print(f"\nLadder written to {args.csv}")
     print("Latency is quoted with its load level throughout; a p99 without a")
     print("concurrency attached is not a number anybody can act on.")
+    if args.expected is None:
+        print("\nNo --expected given, so nothing here is known to be correct. The")
+        print("driver checks HTTP status only; a 200 carrying wrong output counts")
+        print("as a success. Generate digests with expected-digests.py and pass")
+        print("them to make these figures mean something.")
     return 0
 
 
