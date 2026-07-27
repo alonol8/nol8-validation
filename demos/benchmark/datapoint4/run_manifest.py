@@ -102,13 +102,31 @@ def host_facts(alias, prov="measured_now"):
 
 def driver_facts(alias):
     f = host_facts(alias)
+    # Repo root the driver is built from (parent of demos/...).
+    repo = BOX_DRIVER.split("/demos/", 1)[0]
+    src = "demos/benchmark/datapoint4/go"  # the driver's actual source subtree
     f["dp4driver"] = {
         "path": field(BOX_DRIVER, "measured_now"),
         "mtime": field(
             ssh(alias, f'stat -c "%y" {BOX_DRIVER} 2>/dev/null || echo {UNKNOWN}'), "measured_now"
         ),
+        # Binary sha is RECORDED but is NOT a drift trigger: Go builds are not
+        # reproducible without -trimpath, so the sha moves on every `go build`
+        # from identical source. Source identity (below) is the trigger instead.
         "sha256": field(
             ssh(alias, f'sha256sum {BOX_DRIVER} 2>/dev/null | cut -d" " -f1 || echo {UNKNOWN}'),
+            "measured_now",
+        ),
+        # The authoritative source identity: the commit the driver source sits at,
+        # and whether that source subtree is clean. A sha change with an unchanged
+        # commit and a clean tree is benign; a commit change or a dirty tree is not.
+        "source_commit": field(
+            ssh(alias, f'git -C {repo} rev-parse --short HEAD 2>/dev/null || echo {UNKNOWN}'),
+            "measured_now",
+        ),
+        "source_clean": field(
+            ssh(alias, f'[ -z "$(git -C {repo} status --porcelain -- {src} 2>/dev/null)" ] '
+                       f'&& echo clean || echo dirty'),
             "measured_now",
         ),
     }
@@ -176,7 +194,10 @@ def recover_from_csv(path):
     rec = {"columns": UNKNOWN, "rows": 0}
     try:
         with open(path, newline="") as fh:
-            reader = csv.reader(fh)
+            # Skip leading `#` comment lines: superseded evidence CSVs carry a
+            # one-line `# SUPERSEDED`/`# CAVEAT` header (annotate-in-place), which
+            # must not be mistaken for the column header.
+            reader = csv.reader(line for line in fh if not line.startswith("#"))
             header = next(reader, None)
             if not header:
                 return rec
@@ -366,8 +387,13 @@ def _local_sha(path):
 def _flatten(prefix, obj, out):
     """Flatten a manifest to dotted field->value, ignoring timestamps + live
     core samples (dynamic by design, not configuration drift)."""
+    # Skipped from drift comparison (still recorded in the manifest): timestamps,
+    # live core samples, and BINARY SHAS. A binary sha is a poor drift trigger
+    # because Go builds are not reproducible without -trimpath, so it moves on
+    # every build from identical source; source_commit + source_clean are the
+    # trigger instead. `sha256` covers the dp4driver binary and any policy sha.
     SKIP = ("generated_utc", "utc", "utc_start", "utc_end", "deploy_utc",
-            "core_counts_at_capture", "mtime", "start_time")
+            "core_counts_at_capture", "mtime", "start_time", "sha256")
     if isinstance(obj, dict):
         if set(obj.keys()) == {"value", "provenance"}:
             out[prefix] = obj["value"]
@@ -450,10 +476,17 @@ def cmd_capture(args):
     m = gather_live(args.phase, cfg)
     m["drift"] = drift_check(m, args.prev)
     if m["drift"]["result"] == "HARDWARE_DRIFT":
-        print("!! HARDWARE DRIFT vs previous run — the rig changed. Absolutes are "
-              "NOT comparable across this boundary:", file=sys.stderr)
-        for c in m["drift"]["hardware_drift"]:
+        hw = m["drift"]["hardware_drift"]
+        # Print a count header AND a footer so a pipeline that truncates the list
+        # (`| head`) is self-evidently truncated — the last drift warning got past
+        # both of us exactly because it was truncated without any sign it was.
+        print(f"!! HARDWARE DRIFT vs previous run — the rig changed. Absolutes are NOT "
+              f"comparable across this boundary. {len(hw)} field(s) drifted (full list):",
+              file=sys.stderr)
+        for c in hw:
             print(f"   {c['field']}: {c['prev']!r} -> {c['now']!r}", file=sys.stderr)
+        print(f"!! end of {len(hw)} drifted field(s) — if you do not see this line the list was truncated",
+              file=sys.stderr)
     for c in m["drift"].get("run_param_changes", []):
         print(f"   (run param) {c['field']}: {c['prev']!r} -> {c['now']!r}")
     out = args.out or f"{os.path.splitext(args.csv)[0]}.{args.phase}.manifest.json"
