@@ -81,20 +81,48 @@ for engine in $ENGINES; do
   echo ">> deploying the scale policy to $engine (replaces the active policy)"
   validate policy --file "$POLICY" --target "$engine" >/dev/null
   echo ">> letting the policy propagate"; sleep 6
-  echo ">> driving $engine: concurrency [$CONCURRENCY] x payloads [$PAYLOADS]"
-  "$RESULTS/dp4driver" \
-    --engine "$engine" \
-    --label "$engine" \
-    --input "$INPUT" \
-    --concurrency "$CONCURRENCY" \
-    --payloads "$PAYLOADS" \
-    --warmup "$WARMUP" \
-    --duration "$DURATION" \
-    --cap-small "$CAP_SMALL" \
-    --cap-medium "$CAP_MEDIUM" \
-    --cap-large "$CAP_LARGE" \
-    $INSECURE_FLAG \
-    --output "$RESULTS/throughput_$engine.csv"
+  # Deploy verification (ISSUE-003/007, no policy read-back): confirm the policy
+  # actually landed on this engine before we drive it — otherwise a silent stale
+  # deploy would be reported as a real throughput number. Single policy, so no
+  # set-difference; any literal must redact.
+  if ! python "$PACK/deploy_probe.py" --policy "$POLICY" --engines "$engine"; then
+    echo ">> !! deploy probe FAILED for $engine -- skipping (policy did not land)"; continue
+  fi
+  echo ">> driving $engine: concurrency [$CONCURRENCY] x payloads [$PAYLOADS], ONE CELL PER INVOCATION"
+  # Single-cell invocation (findings 011 step 2): per-cell driver-host CPU is
+  # meaningless if one dp4driver call spans a concurrency list, so we drive one
+  # (payload, concurrency) at a time and sample the driver box for exactly that
+  # cell. driver_cpu_pct/busiest/limited land in the CSV beside errors and stall,
+  # and a >70% overall or >90% single-core cell is flagged AT THE TIME.
+  ENGINE_CSV="$RESULTS/throughput_$engine.csv"
+  CELL_CSV="$RESULTS/cell_${engine}.csv"
+  first_cell=1
+  for payload in ${PAYLOADS//,/ }; do
+    for conc in ${CONCURRENCY//,/ }; do
+      echo ">> -- $engine payload=$payload concurrency=$conc"
+      CPUTMP="$(mktemp)"
+      bash "$PACK/driver-cpu-probe.sh" --tail "$DURATION" > "$CPUTMP" & CPUPID=$!
+      "$RESULTS/dp4driver" \
+        --engine "$engine" --label "$engine" --input "$INPUT" \
+        --concurrency "$conc" --payloads "$payload" \
+        --warmup "$WARMUP" --duration "$DURATION" \
+        --cap-small "$CAP_SMALL" --cap-medium "$CAP_MEDIUM" --cap-large "$CAP_LARGE" \
+        $INSECURE_FLAG \
+        --output "$CELL_CSV" | sed 's/^/     /'
+      kill -TERM "$CPUPID" 2>/dev/null || true; wait "$CPUPID" 2>/dev/null || true
+      read -r DCPU DMAXCORE < "$CPUTMP" 2>/dev/null || { DCPU=NA; DMAXCORE=NA; }
+      rm -f "$CPUTMP"
+      DFLAG=no
+      awk "BEGIN{exit !((${DCPU:-0}+0)>70 || (${DMAXCORE:-0}+0)>90)}" 2>/dev/null && DFLAG=yes
+      [ "$DFLAG" = yes ] && echo "     !! DRIVER CPU ${DCPU}% (busiest core ${DMAXCORE}%) > threshold -- cell may be DRIVER-LIMITED; read this engine rps with suspicion"
+      [ -f "$CELL_CSV" ] || { echo "     !! no CSV for this cell -- skipping"; continue; }
+      if [ "$first_cell" -eq 1 ]; then
+        echo "$(head -1 "$CELL_CSV"),driver_cpu_pct,driver_busiest_core_pct,driver_limited" > "$ENGINE_CSV"
+        first_cell=0
+      fi
+      tail -n +2 "$CELL_CSV" | sed "s/\$/,$DCPU,$DMAXCORE,$DFLAG/" >> "$ENGINE_CSV"
+    done
+  done
 done
 
 echo ">> combining per-engine CSVs"

@@ -1,3 +1,4 @@
+# SUPERSEDED (findings 015): OLD-rig concurrency series (8-vCPU, single-NUMA). Its conc1024 ~146k is CORROBORATED by the pinned run (145,838); old-rig corroboration, not a current absolute. See README.md.
 engine,concurrency,payload,records_used,avg_body_bytes,duration_s,completed,errors,rps,throughput_mib_s,p50_ms,p95_ms,p99_ms,p999_ms,min_ms,max_ms,mean_ms,tail_overflow
 themis,256,small,4000,2580,15.0,1157725,0,77181.7,189.92,3.276,4.927,5.835,7.558,1.153,226.382,3.316,0
 themis,512,small,4000,2580,15.0,1732595,54,115506.3,284.22,4.160,7.049,9.222,13.327,1.208,224.910,4.333,0

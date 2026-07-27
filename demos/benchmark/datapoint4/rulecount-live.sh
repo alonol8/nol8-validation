@@ -8,7 +8,23 @@
 # Expect Themis flat, RE2 sloping down as rules climb.
 #
 # Run on EC2 (Go + reaches the engines). Deploys a fresh policy per rule count
-# to BOTH engines; same request corpus/size, only the policy changes.
+# to BOTH engines.
+#
+# CORPUS CAVEAT (do not read the cross-cell trend naively): a fresh corpus is
+# generated PER rule count, so avg_body_bytes co-varies slightly with rule count
+# (observed ~2624/2611/2580 across 2k/6k/8k, ~1.7%). The WITHIN-cell A/B is fair —
+# both engines get the identical corpus in a cell — so the engine RATIO per cell is
+# clean. The cross-cell rule-count TREND is mildly confounded by that body-size
+# drift; read it alongside the per-cell avg_body_bytes column, which the driver
+# records.
+#
+# Why regenerate rather than fix one corpus: fixing the corpus would make MATCH
+# DENSITY co-vary with rule count (the catalog is nested, so a 2k policy matches
+# fewer literals in the same document than an 8k policy), which blends automaton
+# size with match count — the worse confound for "RE2 slows as the pattern set
+# grows." Regenerating is intended to hold match density ~constant and isolate rule
+# count. ASSUMPTION, not yet verified: that the generator actually holds match
+# density roughly constant across rule counts. Treat the trend accordingly.
 #
 #   bash demos/benchmark/datapoint4/rulecount-live.sh
 #   DP4_RULE_COUNTS="1000 4000 16000" DP4_RC_DURATION=10 bash .../rulecount-live.sh
@@ -66,6 +82,10 @@ yaml.safe_dump(c, open(sys.argv[1], "w"), sort_keys=False)
 PY
 echo ">> generating small-band documents only (this sweep sends nothing else)"
 
+# The policy we last confirmed live on the engines (for the deploy probe's
+# set-difference). Empty on the first cell.
+PREV_POLICY=""
+
 for R in $RULE_COUNTS; do
   echo ">> ===== rule_count=$R ====="
   echo "   generating $RECORDS records / $R rules (a few minutes)"
@@ -83,18 +103,48 @@ for R in $RULE_COUNTS; do
     echo "   !! aergia deploy failed at rule_count=$R -- skipping"; continue
   fi
   sleep 6
-  for engine in themis aergia; do
-    for rep in $(seq 1 "$REPS"); do
-      echo "   -- $engine rule_count=$R rep $rep/$REPS"
+  # Deploy verification (ISSUE-003 fire-and-forget, ISSUE-007 no health signal):
+  # prove the NEW ruleset actually landed on BOTH engines before we trust this
+  # cell. Probes with a literal unique to this policy vs the last one confirmed
+  # live, and prints |set(N)-set(prev)| (an empty diff = the sweep isn't varying
+  # the ruleset here, a finding in itself). A stale policy cannot pass.
+  if ! python "$PACK/deploy_probe.py" --policy "$POLICY" --prev "$PREV_POLICY" --engines themis,aergia; then
+    echo "   !! deploy probe FAILED at rule_count=$R -- aborting this cell (policy did not land)"; continue
+  fi
+  PREV_POLICY="$POLICY"
+  # Alternate which engine is driven first each rep (item 7: run-order confound).
+  # The old order ran all Themis reps then all Aergia, so Themis was ALWAYS the one
+  # measured immediately after deploy — which could account for the ~180x 5xx
+  # asymmetry all on its own. Alternating removes that as an explanation.
+  for rep in $(seq 1 "$REPS"); do
+    if [ $((rep % 2)) -eq 1 ]; then ORDER="themis aergia"; else ORDER="aergia themis"; fi
+    for engine in $ORDER; do
+      echo "   -- $engine rule_count=$R rep $rep/$REPS (order: $ORDER)"
+      # Per-cell driver-host CPU headroom (findings 011 step 2): the check that
+      # stops the load generator being the answer again. The probe tails the
+      # driver's MEASURE window (robust to variable corpus-load time) and is
+      # stopped the instant the driver returns; the two numbers land in the CSV
+      # beside errors and stall. Read-only /proc/stat -> zero test impact.
+      CPUTMP="$(mktemp)"
+      bash "$PACK/driver-cpu-probe.sh" --tail "$DURATION" > "$CPUTMP" & CPUPID=$!
       "$RESULTS/dp4driver" \
         --engine "$engine" --label "$engine" --input "$INPUT" \
         --concurrency "$CONC" --payloads "$PAYLOAD" \
         --warmup "$WARMUP" --duration "$DURATION" \
         --cap-small "$CAP_SMALL" --cap-medium 4000 --cap-large 4000 \
         --output "$RESULTS/rc_${engine}.csv" | sed 's/^/      /'
+      kill -TERM "$CPUPID" 2>/dev/null; wait "$CPUPID" 2>/dev/null || true
+      read -r DCPU DMAXCORE < "$CPUTMP" 2>/dev/null || { DCPU=NA; DMAXCORE=NA; }
+      rm -f "$CPUTMP"
+      # Driver-limited if the box is broadly hot (>70%) OR a single core is pinned
+      # (>90%) — the two shapes of "the load generator was the limit". Flag it AT
+      # THE TIME so a suspect cell is visible during the run, not months later.
+      DFLAG=no
+      awk "BEGIN{exit !((${DCPU:-0}+0)>70 || (${DMAXCORE:-0}+0)>90)}" 2>/dev/null && DFLAG=yes
+      [ "$DFLAG" = yes ] && echo "      !! DRIVER CPU ${DCPU}% (busiest core ${DMAXCORE}%) > threshold -- cell may be DRIVER-LIMITED; read this engine rps with suspicion"
       [ -f "$RESULTS/rc_${engine}.csv" ] || continue
-      if [ ! -f "$OUT" ]; then echo "rule_count,rep,$(head -1 "$RESULTS/rc_${engine}.csv")" > "$OUT"; fi
-      tail -n +2 "$RESULTS/rc_${engine}.csv" | sed "s/^/$R,$rep,/" >> "$OUT"
+      if [ ! -f "$OUT" ]; then echo "rule_count,rep,$(head -1 "$RESULTS/rc_${engine}.csv"),driver_cpu_pct,driver_busiest_core_pct,driver_limited" > "$OUT"; fi
+      tail -n +2 "$RESULTS/rc_${engine}.csv" | sed "s/^/$R,$rep,/;s/\$/,$DCPU,$DMAXCORE,$DFLAG/" >> "$OUT"
     done
   done
   echo ">> rule_count=$R done"

@@ -1,3 +1,4 @@
+# SUPERSEDED (findings 015): 10-edge trend on the OLD 8-vCPU driver; superseded as trend basis by rulecount-2k4k6k8k-current-20260727.csv. See README.md.
 rule_count,rep,engine,concurrency,payload,records_used,avg_body_bytes,duration_s,completed,errors,rps,throughput_mib_s,p50_ms,p95_ms,p99_ms,p999_ms,min_ms,max_ms,mean_ms,tail_overflow
 2000,1,themis,256,small,4000,2624,15.0,1125598,18,75039.9,187.83,3.342,4.927,5.835,7.483,1.130,221.629,3.352,0
 2000,2,themis,256,small,4000,2624,15.0,962545,199,64169.7,160.62,3.212,4.688,5.497,6.980,1.092,158.770,3.215,0

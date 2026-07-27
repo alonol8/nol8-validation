@@ -58,8 +58,14 @@ handoff/
 demos/showcase/byo-poc/**/generated/
 demos/showcase/console/byo_work/
 
-# Personal / candid working docs — not for shared repo (keep local)
+# Personal / candid working docs, not for shared repo (keep local)
 .claude/settings.json
+.claude/settings.local.json
 docs/continue-conversation.md
 docs/issues/internal/outbound-slack-comms.md
 docs/WORKLOAD-REALISM-PROPOSAL.md
+
+# Review channel between Claude Code and the reviewer. A local working record:
+# work reports, findings, running status, and the review standard. Kept out of the
+# repo deliberately. It is candid internal back-and-forth, not a deliverable.
+review/

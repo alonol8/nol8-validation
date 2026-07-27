@@ -195,8 +195,8 @@ func buildClient(maxConc int, timeout time.Duration, insecure bool) *http.Client
 // per-request job id, so hashing the whole body would differ on every request
 // and report every response as wrong.
 type expectation struct {
-	oneByteOne  string
-	everyMatch  string
+	oneByteOne string
+	everyMatch string
 }
 
 type verifier struct {
@@ -390,17 +390,20 @@ func (e *errClass) summary() string {
 // ---- one measurement cell ----
 
 type cellResult struct {
-	Engine      string
-	Concurrency int
-	Payload     string
-	RecordsUsed int
-	AvgBytes    int
-	DurationS   float64
-	Completed   int64
-	Errors      int64
-	BytesSent   int64
-	Hist        *latHist
-	ErrClass    *errClass // diagnostic breakdown of Errors (nil if none)
+	Engine       string
+	Concurrency  int
+	Payload      string
+	RecordsUsed  int
+	AvgBytes     int
+	DurationS    float64 // the ISSUING window (workers accept work for exactly this long); rps denominator
+	WallElapsedS float64 // MEASURED wall-clock incl. post-deadline drain; > DurationS when requests stalled
+	Completed    int64
+	Errors       int64
+	BytesSent    int64
+	Hist         *latHist  // SUCCESS latencies only
+	ErrHist      *latHist  // FAILED-request latencies (the stalls a success-only hist can't see)
+	StallSeconds float64   // sum of failed-request durations — capacity spent on failures
+	ErrClass     *errClass // diagnostic breakdown of Errors (nil if none)
 }
 
 func (r cellResult) rps() float64 {
@@ -426,24 +429,41 @@ func (r cellResult) overflow() int64 {
 	return r.Hist.buckets[len(r.Hist.buckets)-1]
 }
 
+// phaseResult carries everything one phase measured. Failed requests are NOT
+// discarded: their latency goes into errHist and their duration into stallNanos,
+// because a failed request still consumed a worker for its whole duration — time
+// a success-only histogram cannot see (a ~3s stall that fails is invisible to it,
+// yet it is exactly the capacity the error cost the run).
+type phaseResult struct {
+	okHist     *latHist
+	errHist    *latHist
+	completed  int64
+	errors     int64
+	bytesSent  int64
+	stallNanos int64
+	elapsed    time.Duration // measured wall-clock, for an honest rps denominator
+}
+
 // runPhase drives `concurrency` goroutines in closed loop until `dur` elapses.
 // When measure is false (warm-up) it discards timings; the caller runs a warm-up
 // phase, then a measured phase, on the same client so connections stay warm.
 func runPhase(client *http.Client, endpoint, token string, bodies [][]byte,
 	indices []int, concurrency int, dur time.Duration, measure bool,
-	ec *errClass, v *verifier) (*latHist, int64, int64, int64) {
+	ec *errClass, v *verifier) phaseResult {
 
-	deadline := time.Now().Add(dur)
+	phaseStart := time.Now()
+	deadline := phaseStart.Add(dur)
 	var next uint64
-	var completed, errors, bytesSent int64
-	hists := make([]*latHist, concurrency)
+	var completed, errors, bytesSent, stallNanos int64
+	okHists := make([]*latHist, concurrency)
+	errHists := make([]*latHist, concurrency)
 
 	var wg sync.WaitGroup
 	for w := 0; w < concurrency; w++ {
-		h := newLatHist()
-		hists[w] = h
+		oh, eh := newLatHist(), newLatHist()
+		okHists[w], errHists[w] = oh, eh
 		wg.Add(1)
-		go func(h *latHist) {
+		go func(oh, eh *latHist) {
 			defer wg.Done()
 			for time.Now().Before(deadline) {
 				i := atomic.AddUint64(&next, 1) - 1
@@ -458,26 +478,38 @@ func runPhase(client *http.Client, endpoint, token string, bodies [][]byte,
 				lat := time.Since(start)
 				if err != nil {
 					atomic.AddInt64(&errors, 1)
-					if measure && ec != nil {
-						ec.add(err)
+					if measure {
+						atomic.AddInt64(&stallNanos, lat.Nanoseconds())
+						eh.record(lat)
+						if ec != nil {
+							ec.add(err)
+						}
 					}
 					continue
 				}
 				atomic.AddInt64(&completed, 1)
 				atomic.AddInt64(&bytesSent, int64(len(body)))
 				if measure {
-					h.record(lat)
+					oh.record(lat)
 				}
 			}
-		}(h)
+		}(oh, eh)
 	}
 	wg.Wait()
+	elapsed := time.Since(phaseStart)
 
-	merged := newLatHist()
-	for _, h := range hists {
-		merged.merge(h)
+	mergedOk, mergedErr := newLatHist(), newLatHist()
+	for _, h := range okHists {
+		mergedOk.merge(h)
 	}
-	return merged, completed, errors, bytesSent
+	for _, h := range errHists {
+		mergedErr.merge(h)
+	}
+	return phaseResult{
+		okHist: mergedOk, errHist: mergedErr,
+		completed: completed, errors: errors, bytesSent: bytesSent,
+		stallNanos: stallNanos, elapsed: elapsed,
+	}
 }
 
 func runCell(client *http.Client, engine, endpoint, token string, cb *corpusBucket,
@@ -488,8 +520,7 @@ func runCell(client *http.Client, engine, endpoint, token string, cb *corpusBuck
 			false, nil, nil)
 	}
 	ec := &errClass{}
-	hist, completed, errors, bytesSent := runPhase(
-		client, endpoint, token, cb.bodies, cb.indices, concurrency, steady, true, ec, v)
+	pr := runPhase(client, endpoint, token, cb.bodies, cb.indices, concurrency, steady, true, ec, v)
 
 	return cellResult{
 		Engine:      engine,
@@ -497,21 +528,39 @@ func runCell(client *http.Client, engine, endpoint, token string, cb *corpusBuck
 		Payload:     cb.name,
 		RecordsUsed: len(cb.bodies),
 		AvgBytes:    cb.avgBytes(),
-		DurationS:   steady.Seconds(),
-		Completed:   completed,
-		Errors:      errors,
-		BytesSent:   bytesSent,
-		Hist:        hist,
-		ErrClass:    ec,
+		// rps/throughput use the ISSUING window (steady), not wall-clock: workers
+		// accept work for exactly `steady`, so that is the interval the load was
+		// applied over. Wall-clock includes post-deadline drain of stalled requests
+		// (a single 4s straggler would otherwise halve a 4s cell's reported rps);
+		// that lost capacity is reported honestly as StallSeconds instead.
+		// Nuance: `completed` includes the few requests that finish DURING the drain
+		// (issued before the deadline, completed just after), so rps slightly
+		// overstates — on the order of 0.02% at 256 workers and ~3ms mean latency.
+		DurationS:    steady.Seconds(),
+		WallElapsedS: pr.elapsed.Seconds(),
+		Completed:    pr.completed,
+		Errors:       pr.errors,
+		BytesSent:    pr.bytesSent,
+		Hist:         pr.okHist,
+		ErrHist:      pr.errHist,
+		StallSeconds: float64(pr.stallNanos) / 1e9,
+		ErrClass:     ec,
 	}
 }
 
 // ---- output ----
 
+// Column order is a stable contract: downstream parsers read by index (payload=2,
+// errors=7, rps=8, request_mib_s=9, p99=12). New columns are APPENDED, never inserted.
+// p50_ms..p999_ms/min/max/mean/tail_overflow are SUCCESS latencies only; failures are
+// in err_p50_ms/err_p99_ms/stall_seconds_total. request_mib_s is REQUEST bytes only
+// (bytesSent = request body size), not response bytes. duration_s is the ISSUING window
+// (the rps denominator); wall_elapsed_s is measured wall-clock incl. stall drain.
 var csvHeader = []string{
 	"engine", "concurrency", "payload", "records_used", "avg_body_bytes",
-	"duration_s", "completed", "errors", "rps", "throughput_mib_s",
+	"duration_s", "completed", "errors", "rps", "request_mib_s",
 	"p50_ms", "p95_ms", "p99_ms", "p999_ms", "min_ms", "max_ms", "mean_ms", "tail_overflow",
+	"err_p50_ms", "err_p99_ms", "stall_seconds_total", "wall_elapsed_s",
 }
 
 func ms(d time.Duration) float64 { return float64(d.Microseconds()) / 1000.0 }
@@ -536,6 +585,10 @@ func (r cellResult) row() []string {
 		fmt.Sprintf("%.3f", ms(r.Hist.max())),
 		fmt.Sprintf("%.3f", ms(r.Hist.mean())),
 		strconv.FormatInt(r.overflow(), 10),
+		fmt.Sprintf("%.3f", ms(r.ErrHist.percentile(0.50))),
+		fmt.Sprintf("%.3f", ms(r.ErrHist.percentile(0.99))),
+		fmt.Sprintf("%.3f", r.StallSeconds),
+		fmt.Sprintf("%.1f", r.WallElapsedS),
 	}
 }
 
@@ -670,9 +723,11 @@ func main() {
 			fmt.Printf(">> %s | conc=%-4d payload=%-6s (warm %ds + measure %ds) ... ", lbl, c, pName, *warmupS, *durationS)
 			r := runCell(client, lbl, endpoint, token, cb, c, warmup, steady, v)
 			rows = append(rows, r)
-			fmt.Printf("rps=%.0f  p50=%.2fms p99=%.2fms p99.9=%.2fms  err=%d\n",
+			// Success percentiles are labelled ok- so P99 is never read as
+			// unconditional; failures are surfaced as their own p99 + total stall.
+			fmt.Printf("rps=%.0f  ok-p50=%.2fms ok-p99=%.2fms  err=%d err-p99=%.2fms stall=%.1fs\n",
 				r.rps(), ms(r.Hist.percentile(0.50)), ms(r.Hist.percentile(0.99)),
-				ms(r.Hist.percentile(0.999)), r.Errors)
+				r.Errors, ms(r.ErrHist.percentile(0.99)), r.StallSeconds)
 			if line := v.report(); line != "" {
 				fmt.Println(line)
 			}

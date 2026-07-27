@@ -1,3 +1,4 @@
+# SUPERSEDED (findings 015): single-edge Jul24, contains the Aergia@8k cliff. OLD rig; superseded by the 10-edge trend. Kept for history. See README.md.
 rule_count,rep,engine,concurrency,payload,records_used,avg_body_bytes,duration_s,completed,errors,rps,throughput_mib_s,p50_ms,p95_ms,p99_ms,p999_ms,min_ms,max_ms,mean_ms,tail_overflow
 1000,1,themis,256,small,4000,2604,15.0,426139,0,28409.3,70.57,8.862,14.147,16.589,20.041,1.458,233.339,9.013,0
 1000,2,themis,256,small,4000,2604,15.0,422620,0,28174.7,69.99,8.951,14.147,16.589,20.041,1.448,230.089,9.088,0

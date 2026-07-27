@@ -4,7 +4,7 @@ proven end to end on the live engines.
 
 A load generator is not a POC: a customer evaluating NOL8 wants to answer three
 questions with THEIR inputs, not ours —
-  1. Does it redact MY data correctly?      -> oracle-verified on their docs
+  1. Does it redact MY data correctly?      -> byte-for-byte oracle on their docs
   2. What does it cost at MY scale?          -> ~8-core software tax (efficiency)
   3. Does it hold up at MY volume?           -> load pass on their own corpus
 
@@ -37,10 +37,19 @@ import time
 import urllib.request
 from pathlib import Path
 
-MAX_TOKEN_LENGTH = 15  # runtime truncates tokens past 15 chars (ISSUE-005)
-POLICY_RULE = re.compile(r'^\s*"(?P<lit>.*)"\s*->\s*"(?P<tok>.*)"\s*;\s*$')
+# The correctness stage adjudicates against the framework's independent oracle
+# (leftmost-longest non-overlapping literal replacement), the SAME one verify-
+# oracle.py uses — not a substring approximation. byo_poc.py lives four levels
+# under the repo root; put the root on the path so `framework` imports.
+REPO_ROOT = Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(REPO_ROOT))
+from framework.policy.oracle import (  # noqa: E402
+    LEFTMOST_LONGEST, OVERLAP_AWARE, adjudicate, build_matcher, parse_policy, substring_pass,
+)
 
-BAR = "─" * 72
+MAX_TOKEN_LENGTH = 15  # runtime truncates tokens past 15 chars (ISSUE-005)
+
+BAR = "-" * 72
 
 
 def hr(title: str) -> None:
@@ -83,36 +92,29 @@ def load_customer_values(values_dir: Path) -> list[tuple[str, str, list[str]]]:
 
 
 def sanitize(categories):
-    """Drop values that would make an UNSAFE policy, reporting each drop, and
-    return (safe_categories, dropped). Mirrors build_policy.py's guards but, for
-    a customer's raw list, we drop-and-warn instead of refusing the whole run:
-      - a value contained in another (ISSUE-004 overlapping-match corruption),
-      - exact duplicates across lists.
-    Token length/distinctness is already guaranteed by _token_for.
+    """Drop only what makes a policy UN-ADJUDICATABLE, reporting each drop, and
+    return (safe_categories, dropped).
+
+    Dropped: exact duplicate values across lists. A duplicated literal has
+    undefined resolution in the engine and the oracle parser refuses it, so it
+    cannot be adjudicated.
+
+    NOT dropped: overlapping values. Word and phrase lists overlap by nature
+    (" of " and " the " share a space), and the correctness stage now adjudicates
+    against BOTH transformation contracts — every-match-fires and one-byte-one-
+    match — so an engine that overlaps is judged correctly rather than failed.
+    This previously dropped containment pairs to protect a single-contract oracle,
+    which both discarded real customer values and could not catch partial overlaps
+    that share a byte without either value containing the other.
     """
     seen: set[str] = set()
     dropped: list[tuple[str, str]] = []
-    # Build the full value set for containment checks.
-    all_values = [v for _, _, vs in categories for v in vs]
     safe_cats = []
     for token, label, values in categories:
         kept = []
         for v in values:
             if v in seen:
                 dropped.append((v, "duplicate value"))
-                continue
-            contained_in = next((o for o in all_values if o != v and v in o), None)
-            contains = next((i for i in all_values if i != v and i in v), None)
-            if contained_in is not None:
-                dropped.append((v, f"contained in {contained_in!r} (ISSUE-004)"))
-                continue
-            if contains is not None:
-                # keep the outer, drop is handled when we hit the inner; but if the
-                # inner is in a later category we still want to flag the outer only
-                # once. Simplest safe choice: drop the OUTER too if it strictly
-                # contains another governed value, since overlapping literals are
-                # the corruption trap.
-                dropped.append((v, f"contains {contains!r} (ISSUE-004)"))
                 continue
             seen.add(v)
             kept.append(v)
@@ -121,29 +123,28 @@ def sanitize(categories):
     return safe_cats, dropped
 
 
+def _escape_literal(v: str) -> str:
+    """Escape a customer value for a .nol rule: backslash FIRST, then quote — the
+    exact inverse of framework.policy.oracle._unescape. Escaping quotes only (the
+    old behaviour) emitted a malformed rule for any value containing a backslash
+    (a Windows path, anything with escaped content) — plausible input, silent
+    corruption, since the round-trip through parse_policy would then not recover
+    the value and it would be silently counted out of scope."""
+    return v.replace("\\", "\\\\").replace('"', '\\"')
+
+
 def render_policy(categories) -> str:
     lines = [
-        "# BYO customer policy — known governed values (deterministic literal match).",
+        "# BYO customer policy - known governed values (deterministic literal match).",
         "# Generated by byo_poc.py from the customer's values/*.txt.",
         "",
     ]
     for token, label, values in categories:
         lines.append(f"# {label} -> {token}")
         for v in values:
-            lines.append(f'"{v.replace(chr(34), chr(92) + chr(34))}" -> "{token}";')
+            lines.append(f'"{_escape_literal(v)}" -> "{token}";')
         lines.append("")
     return "\n".join(lines)
-
-
-def policy_pairs(path: Path) -> list[tuple[str, str]]:
-    pairs = []
-    for line in path.read_text(encoding="utf-8").splitlines():
-        if line.lstrip().startswith("#"):
-            continue
-        m = POLICY_RULE.match(line)
-        if m:
-            pairs.append((m.group("lit"), m.group("tok")))
-    return pairs
 
 
 # ---------------------------------------------------------------- corpus build
@@ -218,21 +219,39 @@ def endpoint_for(engine: str) -> str:
 
 # ---------------------------------------------------------------- stages
 
-def stage_correctness(docs, pairs, engines) -> dict:
-    """Run every doc through each engine, oracle-verify, and check both engines
-    agree. Returns aggregates + per-doc rows."""
-    def norm(s):
-        return re.sub(r"\s+", " ", s).strip()
+def stage_correctness(docs, rules, matcher, engines) -> dict:
+    """Adjudicate each engine's output BYTE-FOR-BYTE, accepting EITHER
+    transformation contract and recording which one the engine reproduced.
+
+    Both contracts are correct: Themis reproduces every-match-fires, Aergia
+    reproduces one-byte-one-match, and they differ only where a policy's values
+    overlap. "Correct" means the output equals ONE of the two expected results
+    exactly — right tokens, right positions, nothing else touched. Judging either
+    engine against a single contract would report failures that are not failures
+    on any customer policy whose values share bytes (word and phrase lists do).
+    This sidesteps the open engineering question of which contract is specified.
+
+    Where a document has no overlap the two contracts coincide, so acceptance is
+    unchanged and the reproduced contract is not counted (it identifies nothing).
+    We also keep the WEAKER substring verdict on the same output, so the summary
+    can flag documents a substring check would pass that the oracle rejects.
+    """
+    # Excerpts are truncated: this is the customer's own document text, so we keep
+    # only enough to show the defect, never the full document, never to an artifact.
+    EXCERPT = 160
 
     rows = []
-    totals = {e: {"verified": 0, "in_scope": 0} for e in engines}
+    totals = {e: {"correct": 0, "docs": 0, "substr_ok": 0, "overlap_docs": 0,
+                  LEFTMOST_LONGEST: 0, OVERLAP_AWARE: 0} for e in engines}
+    disagreements = []  # (doc#, engine, expected_excerpt, engine_excerpt): substr-pass but oracle-fail
     parity_ok = 0
     parity_total = 0
     for i, original in enumerate(docs):
-        in_scope = [(l, t) for l, t in pairs if l and l in original]
-        near = [(l, t) for l, t in pairs if l and l not in original and norm(l) in norm(original)]
+        # In-scope literal->token pairs (for the weaker substring check + density).
+        substr_pairs = [(lit, tok) for lit, tok in rules.items() if lit in original]
+        in_scope = len(substr_pairs)
         msg_bytes = len(original.encode("utf-8"))
-        occurrences = sum(original.count(l) for l, _ in in_scope)
+        occurrences = sum(original.count(lit) for lit, _ in substr_pairs)
         density = occurrences / (msg_bytes / 1024) if msg_bytes else 0.0
         outputs = {}
         row_engines = {}
@@ -243,20 +262,36 @@ def stage_correctness(docs, pairs, engines) -> dict:
                 row_engines[e] = {"error": str(exc)[:120]}
                 continue
             outputs[e] = processed
-            checks = [(l in original and l not in processed and t in processed) for l, t in in_scope]
-            verified = sum(1 for c in checks if c)
-            totals[e]["verified"] += verified
-            totals[e]["in_scope"] += len(in_scope)
-            row_engines[e] = {"verified": verified, "in_scope": len(in_scope), "ok": verified == len(in_scope)}
+            adj = adjudicate(original, processed, matcher, rules)  # accepts either contract
+            substr_ok = substring_pass(processed, substr_pairs)
+            totals[e]["docs"] += 1
+            totals[e]["correct"] += 1 if adj.correct else 0
+            totals[e]["substr_ok"] += 1 if substr_ok else 0
+            reproduced = ""
+            if adj.has_overlap:
+                totals[e]["overlap_docs"] += 1
+                if adj.correct:  # exactly one contract can match on an overlap doc; it names the engine
+                    for name in adj.contracts:
+                        totals[e][name] += 1
+                        reproduced = name
+            if substr_ok and not adj.correct:
+                disagreements.append((i + 1, e, adj.expected[OVERLAP_AWARE][:EXCERPT], processed[:EXCERPT]))
+            row_engines[e] = {"correct": adj.correct, "substr_ok": substr_ok,
+                              "in_scope": in_scope, "has_overlap": adj.has_overlap,
+                              "reproduced": reproduced}
         if len(outputs) == 2:
             parity_total += 1
             if len(set(outputs.values())) == 1:
                 parity_ok += 1
-        rows.append({"doc": i + 1, "bytes": msg_bytes, "in_scope": len(in_scope),
-                     "density": round(density, 1), "near_misses": len(near),
+        rows.append({"doc": i + 1, "bytes": msg_bytes, "in_scope": in_scope,
+                     "density": round(density, 1),
                      "engines": row_engines,
                      "identical": len(outputs) == 2 and len(set(outputs.values())) == 1})
-    return {"rows": rows, "totals": totals, "parity_ok": parity_ok, "parity_total": parity_total}
+    # An engine that reproduced BOTH contracts across different overlap documents
+    # in the same run is inconsistent — a finding to surface loudly, not average.
+    mixed = {e: (t[LEFTMOST_LONGEST] > 0 and t[OVERLAP_AWARE] > 0) for e, t in totals.items()}
+    return {"rows": rows, "totals": totals, "parity_ok": parity_ok,
+            "parity_total": parity_total, "disagreements": disagreements, "mixed": mixed}
 
 
 def run_driver(driver: Path, engine: str, corpus: Path, concurrency: int,
@@ -309,22 +344,29 @@ def main() -> int:
     hr("STEP 1 · Build the policy from the customer's governed values")
     vdir = byo / "values"
     if not vdir.is_dir():
-        print(f"  ✗ no values/ dir under {byo}"); return 2
+        print(f"  X no values/ dir under {byo}"); return 2
     cats = load_customer_values(vdir)
+    supplied = sum(len(v) for _, _, v in cats)  # coverage denominator, before sanitize
     cats, dropped = sanitize(cats)
     if not cats:
-        print("  ✗ no usable governed values found"); return 2
+        print("  [X] no usable governed values found"); return 2
     policy = work / "byo-policy.nol"
     policy.write_text(render_policy(cats), encoding="utf-8")
     rule_count = sum(len(v) for _, _, v in cats)
-    print(f"  Built {policy} — {rule_count} rules across {len(cats)} categories:")
+    # Coverage FIRST: a POC that reports correctness without coverage can pass
+    # while having quietly ignored part of the input.
+    print(f"  Coverage: {rule_count} of {supplied} supplied values are in the policy"
+          + (f"; {len(dropped)} dropped (below)." if dropped else "; none dropped."))
+    print(f"  Built {policy} - {rule_count} rules across {len(cats)} categories:")
     for token, label, values in cats:
         print(f"    {token:16s} {label:24s} {len(values):>5d} values")
     if dropped:
-        print(f"  ⚠  dropped {len(dropped)} unsafe value(s) (kept the policy safe to deploy):")
+        print(f"  [!] {len(dropped)} value(s) NOT in the policy (dropped, with reason):")
         for v, why in dropped[:8]:
-            print(f"       • {v!r}: {why}")
-    print("  ── policy sample ──")
+            print(f"       - {v!r}: {why}")
+        if len(dropped) > 8:
+            print(f"       ... and {len(dropped) - 8} more")
+    print("  -- policy sample --")
     for ln in policy.read_text(encoding="utf-8").splitlines()[3:9]:
         print(f"    {ln}")
 
@@ -332,22 +374,22 @@ def main() -> int:
     hr("STEP 2 · Build the corpus from the customer's documents")
     ddir = byo / "documents"
     if not ddir.is_dir():
-        print(f"  ✗ no documents/ dir under {byo}"); return 2
+        print(f"  X no documents/ dir under {byo}"); return 2
     docs = load_documents(ddir)
     if not docs:
-        print("  ✗ no documents found"); return 2
+        print("  X no documents found"); return 2
     corpus = work / "byo-input.jsonl"
     write_corpus(docs, corpus)
     avg = sum(len(d.encode()) for d in docs) // len(docs)
     print(f"  Built {corpus} — {len(docs)} documents, avg {avg} bytes.")
-    print("  ── document sample (first, truncated) ──")
+    print("  -- document sample (first, truncated) --")
     print("    " + docs[0][:240].replace("\n", "\n    "))
 
     # 3) deploy -----------------------------------------------------------
     hr("STEP 3 · Deploy the policy to the engines (confirm applied)")
     for e in engines:
         ok = deploy(policy, e, env)
-        print(f"  {'✓' if ok else '✗'} {ENGINES[e]['label']:24s} deploy {'APPLIED' if ok else 'FAILED'}")
+        print(f"  {'OK' if ok else 'X'} {ENGINES[e]['label']:24s} deploy {'APPLIED' if ok else 'FAILED'}")
         if not ok:
             print("     (a deploy failure here is usually the policy exceeding a size/limit)")
             return 3
@@ -359,40 +401,79 @@ def main() -> int:
         time.sleep(args.settle)
 
     # 4) correctness ------------------------------------------------------
-    hr("STEP 4 · Correctness on the customer's data (oracle-verified, both engines)")
-    pairs = policy_pairs(policy)
-    cres = stage_correctness(docs, pairs, engines)
-    print(f"  {'doc':>4s} {'bytes':>7s} {'in-scope':>9s} {'matches/KB':>11s}  " +
+    hr("STEP 4 · Correctness on the customer's data (byte-for-byte oracle, both engines)")
+    rules = parse_policy(policy)
+    matcher = build_matcher(rules)
+    cres = stage_correctness(docs, rules, matcher, engines)
+    print(f"  {'doc':>4s} {'bytes':>7s} {'in-scope':>9s} {'match/KB':>9s}  " +
           "  ".join(f"{ENGINES[e]['label'].split()[0]:>8s}" for e in engines) + "   identical")
     for r in cres["rows"]:
         cells = []
         for e in engines:
             ev = r["engines"].get(e, {})
-            cells.append(f"{ev.get('verified','-')}/{ev.get('in_scope','-')}" if "error" not in ev else "ERR")
-        idc = "✓" if r["identical"] else ("—" if len(engines) < 2 else "✗")
-        print(f"  {r['doc']:>4d} {r['bytes']:>7d} {r['in_scope']:>9d} {r['density']:>11.1f}  " +
+            if "error" in ev:
+                cells.append("ERR")
+            else:
+                # mark which contract was reproduced on an overlapping-policy doc
+                mark = {LEFTMOST_LONGEST: " 1", OVERLAP_AWARE: " E"}.get(ev.get("reproduced", ""), "")
+                cells.append(("OK" + mark) if ev["correct"] else "X MISM")
+        idc = "OK" if r["identical"] else ("—" if len(engines) < 2 else "X")
+        print(f"  {r['doc']:>4d} {r['bytes']:>7d} {r['in_scope']:>9d} {r['density']:>9.1f}  " +
               "  ".join(f"{c:>8s}" for c in cells) + f"   {idc}")
     for e in engines:
         t = cres["totals"][e]
-        pct = (100.0 * t["verified"] / t["in_scope"]) if t["in_scope"] else 0.0
-        print(f"  {ENGINES[e]['label']}: {t['verified']}/{t['in_scope']} governed values verified ({pct:.1f}%).")
+        pct = (100.0 * t["correct"] / t["docs"]) if t["docs"] else 0.0
+        print(f"  {ENGINES[e]['label']}: {t['correct']}/{t['docs']} documents correct byte-for-byte "
+              f"({pct:.1f}%) — accepts either transformation contract.")
+        if t["overlap_docs"]:
+            print(f"       {t['overlap_docs']} document(s) had OVERLAPPING matches; the engine reproduced "
+                  f"every-match-fires on {t[OVERLAP_AWARE]}, one-byte-one-match on {t[LEFTMOST_LONGEST]} "
+                  f"(E / 1 in the table).")
+            print(f"       Note: on those, more than one rule fired over shared text. That is "
+                  f"self-consistent and safe to redact, but whether every-match (both rules fire) or "
+                  f"one-byte-one (the first wins) is the behaviour you WANT is a data-fidelity call "
+                  f"for you to confirm — it is not a defect either way.")
     if len(engines) == 2:
-        print(f"  Output parity: {cres['parity_ok']}/{cres['parity_total']} documents identical across both engines.")
+        print(f"  Output parity: {cres['parity_ok']}/{cres['parity_total']} documents identical across both engines "
+              f"(they will differ wherever the policy overlaps — that is expected, not a defect).")
+    # Loud: an engine that reproduced BOTH contracts across documents in one run.
+    for e, mx in cres["mixed"].items():
+        if mx:
+            t = cres["totals"][e]
+            print(f"  [!]  INCONSISTENT CONTRACT — {ENGINES[e]['label']} reproduced every-match-fires on "
+                  f"{t[OVERLAP_AWARE]} document(s) and one-byte-one-match on {t[LEFTMOST_LONGEST]}. An engine "
+                  f"should follow ONE contract; investigate before trusting either result.")
+    # Where the weaker substring check would have disagreed with the oracle —
+    # documents the OLD POC would have reported as passing.
+    if cres["disagreements"]:
+        print(f"  [!]  {len(cres['disagreements'])} document/engine result(s) PASS a substring check but FAIL "
+              f"the oracle (both contracts):")
+        for doc_n, e, expected_excerpt, engine_excerpt in cres["disagreements"][:8]:
+            print(f"       - doc {doc_n} on {ENGINES[e]['label']} (excerpt):")
+            print(f"           expected (every-match): {expected_excerpt!r}")
+            print(f"           engine:                 {engine_excerpt!r}")
 
     # 5) load -------------------------------------------------------------
     if not args.skip_load:
         hr("STEP 5 · Load — the customer's corpus at volume (both engines)")
         driver = Path("demos/benchmark/datapoint4/results/dp4driver")
         if not driver.exists():
-            print("  ⚠  load driver not built; skipping load. (build: cd demos/benchmark/datapoint4/go && go build -o ../results/dp4driver .)")
+            print("  [!] load driver not built; skipping load. (build: cd demos/benchmark/datapoint4/go && go build -o ../results/dp4driver .)")
         else:
-            if len(docs) < 2000:
-                print(f"  ⚠  only {len(docs)} distinct documents — a small working set can flatter the")
-                print("      software engine (it serves repeats warm from CPU cache). For a load number")
-                print("      that's cache-fair, supply a few thousand representative documents.")
+            # A ratio measured on a small working set is not cache-fair (the
+            # software engine serves repeats warm), so below the threshold we
+            # suppress the ratio rather than warn-and-print it in front of a
+            # customer.
+            RATIO_MIN_DOCS = 2000
+            enough_docs = len(docs) >= RATIO_MIN_DOCS
+            if not enough_docs:
+                print(f"  [!] only {len(docs)} distinct documents (< {RATIO_MIN_DOCS}) - a small working set")
+                print("      can flatter the software engine (it serves repeats warm from CPU cache).")
+                print("      Per-engine throughput is shown below, but the ratio is SUPPRESSED as not")
+                print("      cache-fair; supply a few thousand representative documents for a ratio.")
             load = {}
             for e in engines:
-                print(f"  ── driving {ENGINES[e]['label']} (conc {args.concurrency}) ──")
+                print(f"  -- driving {ENGINES[e]['label']} (conc {args.concurrency}) --")
                 load[e] = run_driver(driver, e, corpus, args.concurrency, args.duration, args.warmup, env)
             print(f"\n  {'engine':24s} {'payload':8s} {'req/s':>9s} {'MB/s':>8s} {'p99 ms':>8s} {'errors':>7s}")
             for e in engines:
@@ -400,8 +481,9 @@ def main() -> int:
                     print(f"  {ENGINES[e]['label']:24s} (no result)"); continue
                 for c in load[e]["cells"]:
                     print(f"  {ENGINES[e]['label']:24s} {c['payload']:8s} {c['rps']:>9d} {c['mib_s']:>8.1f} {c['p99']:>8.1f} {c['errors']:>7d}")
-            # ratio on small payload if both present
-            if len(engines) == 2 and all(load.get(e) for e in engines):
+            # ratio on small payload — only when the working set is large enough to
+            # be cache-fair (item 4: do not warn and then print the number anyway).
+            if enough_docs and len(engines) == 2 and all(load.get(e) for e in engines):
                 def small_rps(e):
                     return next((c["rps"] for c in load[e]["cells"] if c["payload"] == "small"), 0)
                 a, b = small_rps(engines[0]), small_rps(engines[1])
@@ -409,13 +491,14 @@ def main() -> int:
                     hi, lo = (a, b) if a >= b else (b, a)
                     lead = engines[0] if a >= b else engines[1]
                     print(f"\n  Small-payload throughput on the customer's data: "
-                          f"{ENGINES[lead]['label']} leads {hi/lo:.2f}× ({hi:,} vs {lo:,} req/s).")
+                          f"{ENGINES[lead]['label']} leads {hi/lo:.2f}x ({hi:,} vs {lo:,} req/s).")
 
     # 6) summary ----------------------------------------------------------
     hr("POC SUMMARY — the customer's three questions, on the customer's data")
-    okc = all(cres["totals"][e]["verified"] == cres["totals"][e]["in_scope"] for e in engines)
-    print(f"  1. Redacts MY data correctly?   {'✓ yes' if okc else '✗ see mismatches above'} "
-          f"— oracle-verified against the customer's own policy"
+    okc = all(cres["totals"][e]["exact"] == cres["totals"][e]["docs"] and cres["totals"][e]["docs"] > 0
+              for e in engines)
+    print(f"  1. Redacts MY data correctly?   {'OK yes' if okc else 'X see mismatches above'} "
+          f"— every document matches an independent oracle byte-for-byte"
           + (f"; {cres['parity_ok']}/{cres['parity_total']} identical on both engines" if len(engines) == 2 else ""))
     print(f"  2. Costs what at MY scale?      the FPGA does the matching in silicon — ~8 CPU cores")
     print(f"                                  the software path burns on the RE2 lexers "

@@ -33,7 +33,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import re
 import sys
 from pathlib import Path
 
@@ -43,31 +42,10 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT))
 from framework.policy.matching import LiteralMatcher, resolve_non_overlapping  # noqa: E402
-
-# "literal" -> "replacement";  (both strings may contain \" and \\ escapes)
-_RULE = re.compile(r'^"((?:[^"\\]|\\.)*)"\s*->\s*"((?:[^"\\]|\\.)*)";\s*$')
-
-
-def _unescape(s: str) -> str:
-    return s.replace('\\"', '"').replace("\\\\", "\\")
-
-
-def parse_policy(path: Path) -> dict[str, str]:
-    """Parse a literal .nol policy into {literal: replacement}.
-
-    Full-line `#` comments and blank lines are ignored. A trailing inline comment
-    after a rule is a parse error in the real engine, so we treat it as one here.
-    """
-    rules: dict[str, str] = {}
-    for lineno, raw in enumerate(path.read_text().splitlines(), 1):
-        line = raw.strip()
-        if not line or line.startswith("#"):
-            continue
-        m = _RULE.match(line)
-        if not m:
-            raise ValueError(f"{path}:{lineno}: not a rule: {raw!r}")
-        rules[_unescape(m.group(1))] = _unescape(m.group(2))
-    return rules
+from framework.policy.oracle import parse_policy  # noqa: E402
+# One shared strict parser (framework.policy.oracle.parse_policy): handles \" and
+# \\ escapes and raises on a non-rule line OR a duplicate literal, instead of each
+# verifier keeping its own copy that diverged. See findings 016 item 2.
 
 
 def oracle_output(text: str, matcher: LiteralMatcher, rules: dict[str, str]) -> str:

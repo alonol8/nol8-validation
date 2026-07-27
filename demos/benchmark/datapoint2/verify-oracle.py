@@ -25,32 +25,14 @@ from __future__ import annotations
 
 import argparse
 import json
-import re
 import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(REPO_ROOT))
 from framework.policy.matching import LiteralMatcher, resolve_non_overlapping  # noqa: E402
-
-_RULE = re.compile(r'^"((?:[^"\\]|\\.)*)"\s*->\s*"((?:[^"\\]|\\.)*)";\s*$')
-
-
-def _unescape(s: str) -> str:
-    return s.replace('\\"', '"').replace("\\\\", "\\")
-
-
-def parse_policy(path: Path) -> dict[str, str]:
-    rules: dict[str, str] = {}
-    for lineno, raw in enumerate(path.read_text().splitlines(), 1):
-        line = raw.strip()
-        if not line or line.startswith("#"):
-            continue
-        m = _RULE.match(line)
-        if not m:
-            raise ValueError(f"{path}:{lineno}: not a rule: {raw!r}")
-        rules[_unescape(m.group(1))] = _unescape(m.group(2))
-    return rules
+from framework.policy.oracle import parse_policy  # noqa: E402
+# One shared strict parser (framework.policy.oracle); findings 016 item 2.
 
 
 def oracle_output(text: str, matcher: LiteralMatcher, rules: dict[str, str]) -> str:

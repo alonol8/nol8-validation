@@ -1120,20 +1120,32 @@ def _normalize_expected_replacements(
     ):
         return expected_message
 
-    replacements = {
-        match.get("replacement")
-        for match in expected_matches
-        if isinstance(match, dict)
-        and isinstance(match.get("replacement"), str)
-        and match.get("replacement")
-    }
-    normalized = expected_message
-    for replacement in sorted(replacements, key=lambda value: (-len(value), value)):
-        normalized = normalized.replace(
-            replacement,
-            replacement[:replacement_max_length],
-        )
-    return normalized
+    # Truncate each replacement AT the position it actually occupies in the
+    # expected output, located by walking left to right in match order — NOT with a
+    # global str.replace, which would also truncate a token that happens to appear
+    # as ordinary document text (a rare but real false truncation). expected_matches
+    # is ordered by match position and expected_message contains the replacements in
+    # that same order, so a forward cursor lands on each real replacement in turn;
+    # for a document with no coincidental token-in-text this is identical to the old
+    # global replace, and strictly more correct where they differ.
+    out: list[str] = []
+    cursor = 0
+    for match in expected_matches:
+        if not isinstance(match, dict):
+            continue
+        replacement = match.get("replacement")
+        if not isinstance(replacement, str) or not replacement:
+            continue
+        idx = expected_message.find(replacement, cursor)
+        if idx < 0:
+            # Not found ahead of the cursor — leave the text as is rather than
+            # guess; never corrupt on disagreement between evidence and message.
+            continue
+        out.append(expected_message[cursor:idx])
+        out.append(replacement[:replacement_max_length])
+        cursor = idx + len(replacement)
+    out.append(expected_message[cursor:])
+    return "".join(out)
 
 
 def _replacement_collisions(

@@ -1,0 +1,46 @@
+[
+  {
+    "rule_count": 2000,
+    "docs": 15000,
+    "distinct_bodies": 15000,
+    "diversity_ratio": 1.0,
+    "avg_bytes": 115074,
+    "total_matches": 211214,
+    "matches_per_kb": 0.1253,
+    "near_misses_per_kb": 0.0,
+    "run_dir": "20260726T232459932938Z"
+  },
+  {
+    "rule_count": 4000,
+    "docs": 12000,
+    "distinct_bodies": 12000,
+    "diversity_ratio": 1.0,
+    "avg_bytes": 117513,
+    "total_matches": 171170,
+    "matches_per_kb": 0.1243,
+    "near_misses_per_kb": 0.0,
+    "run_dir": "20260727T001144436082Z"
+  },
+  {
+    "rule_count": 6000,
+    "docs": 15000,
+    "distinct_bodies": 15000,
+    "diversity_ratio": 1.0,
+    "avg_bytes": 121350,
+    "total_matches": 213297,
+    "matches_per_kb": 0.12,
+    "near_misses_per_kb": 0.0,
+    "run_dir": "20260726T234734369233Z"
+  },
+  {
+    "rule_count": 8000,
+    "docs": 15000,
+    "distinct_bodies": 15000,
+    "diversity_ratio": 1.0,
+    "avg_bytes": 117502,
+    "total_matches": 213684,
+    "matches_per_kb": 0.1241,
+    "near_misses_per_kb": 0.0,
+    "run_dir": "20260726T235950322468Z"
+  }
+]

@@ -33,15 +33,24 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 ROOT = Path(__file__).resolve().parents[3]          # repo root
+sys.path.insert(0, str(ROOT))
+# The correctness step adjudicates engine output against the framework's
+# independent oracle (byte-for-byte), the SAME one the CLI POC and verify-oracle
+# use — not a substring check.
+from framework.policy.oracle import (  # noqa: E402
+    LEFTMOST_LONGEST, OVERLAP_AWARE, adjudicate, build_matcher, parse_policy, substring_pass,
+)
 HERE = Path(__file__).resolve().parent
 BRAND = ROOT / "demos" / "benchmark" / "brand"
 POLICY = ROOT / "demos" / "policies" / "starter-known-values.nol"
 SCEN = HERE.parent / "scenarios"
 PORT = int(os.environ.get("CONSOLE_PORT", "8770"))
-# Bind all interfaces by default so the console is reachable over the VPN
-# (http://<box-ip>:PORT). Set CONSOLE_HOST=127.0.0.1 to restrict to localhost
-# (then reach it only via an SSH tunnel).
-HOST = os.environ.get("CONSOLE_HOST", "0.0.0.0")
+# Bind localhost only by default. The console has no auth and CAN deploy policies
+# (a deploy replaces the whole ruleset, ISSUE-002), so anyone reachable on this
+# port could wipe the tenant — do not expose it on all interfaces. Reach it via
+# the SSH tunnel: `ssh -f -N -L 8770:localhost:8770 nol8-demo`. Set
+# CONSOLE_HOST=0.0.0.0 explicitly only when you intend to expose it over the VPN.
+HOST = os.environ.get("CONSOLE_HOST", "127.0.0.1")
 
 
 def lan_ip() -> str:
@@ -62,16 +71,28 @@ ENGINES = {
                "token": os.environ.get("AERGIA_TOKEN", "")},
 }
 
-# Efficiency numbers measured on the engine hosts (DPDK poll-mode → constant under
-# load; validated: F2 apollo held ~11.3 cores while sustaining ~27k req/s). See
-# docs/DP4-THROUGHPUT-BRIEF.md "efficiency result".
-EFFICIENCY = {
-    "themis": {"apollo": 11.3, "matching": 0.0, "total": 11.3, "box_cores": 24,
-               "rps": 76600, "matching_label": "FPGA / 0"},
-    "aergia": {"apollo": 11.2, "matching": 8.0, "total": 19.2, "box_cores": 32,
-               "rps": 56900, "matching_label": "8.0 (RE2 lexers)"},
-    "tax_cores": 8.0, "ratio": 2.3,  # cores/req: 0.15 vs 0.34 → ~2.3x (10-Argus throughput)
-}
+# Efficiency numbers: the SINGLE SOURCE OF TRUTH is
+# artifacts/evidence/efficiency-constants.json (cores MEASURED with repeats — see
+# efficiency-*-20260726.csv). Cores + throughput are loaded from there; the console
+# DERIVES cores/1k and the ratio for display so there is no hardcoded copy to drift.
+# The authoritative ratio in the JSON is null until the under-load confirmation
+# (findings 009 item 5); the derived display value is flagged provisional until then.
+def _load_efficiency():
+    c = json.loads((ROOT / "artifacts" / "evidence" / "efficiency-constants.json").read_text(encoding="utf-8"))
+    eff = {}
+    for e in ("themis", "aergia"):
+        rps = c["throughput_rps"][e]
+        eff[e] = {"apollo": c[e]["apollo"], "matching": c[e]["matching"],
+                  "total": c[e]["total"], "box_cores": c[e]["box_cores"], "rps": rps,
+                  "matching_label": c[e]["matching_label"],
+                  "cores_per_1k": round(c[e]["total"] / (rps / 1000.0), 3)}
+    eff["tax_cores"] = c["tax_cores"]
+    eff["ratio"] = round(eff["aergia"]["cores_per_1k"] / eff["themis"]["cores_per_1k"], 2)
+    eff["cores_load_state"] = c["cores_load_state"]
+    eff["provisional"] = c.get("ratio") is None  # true until item 5 confirms under load
+    return eff
+
+EFFICIENCY = _load_efficiency()
 
 DRIVER = ROOT / "demos" / "benchmark" / "datapoint4" / "results" / "dp4driver"
 
@@ -301,7 +322,8 @@ def deploy_policy() -> dict:
 # ---- Bring-Your-Own-Data POC ------------------------------------------------
 # A load generator is not a POC. This lets an SA paste a customer's own governed
 # values + documents and prove, live: (1) correct redaction on THEIR data,
-# oracle-verified on both engines; (2) the CPU-cost story; (3) throughput on
+# adjudicated BYTE-FOR-BYTE against the framework's independent oracle on both
+# engines (not a substring check); (2) the CPU-cost story; (3) throughput on
 # THEIR corpus. Mirrors demos/showcase/byo-poc/byo_poc.py, driven from the UI.
 
 def _byo_token(name: str, used: set) -> str:
@@ -348,21 +370,6 @@ def _byo_render(cats) -> str:
             lines.append(f'"{v.replace(chr(34), chr(92) + chr(34))}" -> "{token}";')
         lines.append("")
     return "\n".join(lines)
-
-
-def _byo_pairs():
-    return policy_pairs_from(BYO_POLICY)
-
-
-def policy_pairs_from(path):
-    pairs = []
-    for line in Path(path).read_text(encoding="utf-8").splitlines():
-        if line.lstrip().startswith("#"):
-            continue
-        m = POLICY_RULE.match(line)
-        if m:
-            pairs.append((m.group("lit"), m.group("tok")))
-    return pairs
 
 
 def _byo_docs():
@@ -482,7 +489,12 @@ def _verify_engine(engine, idxs, docs):
 def byo_correctness(engines=("themis", "aergia"), limit=12) -> dict:
     if not BYO_POLICY.exists() or not BYO_CORPUS.exists():
         return {"error": "build + deploy first"}
-    pairs, docs = _byo_pairs(), _byo_docs()
+    try:
+        rules = parse_policy(BYO_POLICY)
+    except ValueError as exc:
+        return {"error": f"policy parse: {exc}"}
+    matcher = build_matcher(rules)
+    docs = _byo_docs()
     total = len(docs)
     # Verify a representative, evenly-spaced SAMPLE live (default `limit`). The
     # software engine has intermittent multi-second stalls that make verifying a
@@ -503,13 +515,19 @@ def byo_correctness(engines=("themis", "aergia"), limit=12) -> dict:
             for f, e in futs.items():
                 for i, v in f.result().items():
                     out[(i, e)] = v
+    EXCERPT = 160  # customer text: keep only enough to show a defect, never the whole doc
     rows = []
-    totals = {e: {"verified": 0, "in_scope": 0} for e in engines}
+    # `exact` = correct against EITHER contract (kept name for UI compatibility);
+    # the contract counters identify which one each engine reproduced on overlaps.
+    totals = {e: {"exact": 0, "docs": 0, "overlap_docs": 0,
+                  LEFTMOST_LONGEST: 0, OVERLAP_AWARE: 0} for e in engines}
+    disagreements = []  # substring PASSED but oracle FAILED (the old console's blind spot)
     parity_ok = parity_total = 0
     for i in idxs:
         original = docs[i]
-        in_scope = [(l, t) for l, t in pairs if l and l in original]
-        occ = sum(original.count(l) for l, _ in in_scope)
+        substr_pairs = [(l, t) for l, t in rules.items() if l in original]
+        in_scope = len(substr_pairs)
+        occ = sum(original.count(l) for l, _ in substr_pairs)
         mb = len(original.encode("utf-8"))
         outs, reng = {}, {}
         for e in engines:
@@ -518,23 +536,42 @@ def byo_correctness(engines=("themis", "aergia"), limit=12) -> dict:
                 reng[e] = {"error": (str(r)[:120] if r else "no result")}; continue
             processed = r
             outs[e] = processed
-            ver = sum(1 for l, t in in_scope if l not in processed and t in processed)
-            totals[e]["verified"] += ver
-            totals[e]["in_scope"] += len(in_scope)
-            reng[e] = {"verified": ver, "in_scope": len(in_scope), "ok": ver == len(in_scope)}
+            # Accept EITHER contract byte-for-byte (Themis: every-match-fires,
+            # Aergia: one-byte-one-match). Both are correct; a single-contract
+            # check would falsely fail Themis on any overlapping policy.
+            adj = adjudicate(original, processed, matcher, rules)
+            totals[e]["docs"] += 1
+            totals[e]["exact"] += 1 if adj.correct else 0
+            reproduced = ""
+            if adj.has_overlap:
+                totals[e]["overlap_docs"] += 1
+                if adj.correct:
+                    for name in adj.contracts:  # exactly one on an overlap doc — it names the engine
+                        totals[e][name] += 1
+                        reproduced = name
+            if substring_pass(processed, substr_pairs) and not adj.correct:
+                disagreements.append({"doc": i + 1, "engine": e, "label": ENGINES[e]["label"],
+                                      "oracle": adj.expected[OVERLAP_AWARE][:EXCERPT],
+                                      "engine_out": processed[:EXCERPT]})
+            reng[e] = {"exact": adj.correct, "in_scope": in_scope,
+                       "has_overlap": adj.has_overlap, "reproduced": reproduced}
         if len(outs) == 2:
             parity_total += 1
             parity_ok += 1 if len(set(outs.values())) == 1 else 0
-        rows.append({"doc": i + 1, "bytes": mb, "in_scope": len(in_scope),
+        rows.append({"doc": i + 1, "bytes": mb, "in_scope": in_scope,
                      "density": round(occ / (mb / 1024), 1) if mb else 0.0,
                      "engines": reng,
                      "identical": len(outs) == 2 and len(set(outs.values())) == 1})
+    # Loud finding: an engine that reproduced BOTH contracts across documents.
+    mixed = {e: (totals[e][LEFTMOST_LONGEST] > 0 and totals[e][OVERLAP_AWARE] > 0) for e in engines}
     return {
         "rows": rows,
-        "totals": {e: {**totals[e], "label": ENGINES[e]["label"],
-                       "pct": round(100 * totals[e]["verified"] / totals[e]["in_scope"], 1)
-                       if totals[e]["in_scope"] else 0.0} for e in engines},
+        "totals": {e: {"label": ENGINES[e]["label"], "exact": totals[e]["exact"],
+                       "docs": totals[e]["docs"], "overlap_docs": totals[e]["overlap_docs"],
+                       "every_match": totals[e][OVERLAP_AWARE],
+                       "one_byte_one": totals[e][LEFTMOST_LONGEST]} for e in engines},
         "parity_ok": parity_ok, "parity_total": parity_total,
+        "disagreements": disagreements, "mixed": mixed,
         "sampled": len(idxs), "total": total,
     }
 

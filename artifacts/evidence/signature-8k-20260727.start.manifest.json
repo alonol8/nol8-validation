@@ -1,0 +1,228 @@
+{
+  "manifest_version": 1,
+  "phase": "start",
+  "generated_utc": {
+    "value": "2026-07-27T15:00:00Z",
+    "provenance": "measured_now"
+  },
+  "run": {
+    "csv": "artifacts/evidence/signature-8k-20260727.csv",
+    "basename": "signature-8k-20260727"
+  },
+  "issuing_host": {
+    "reachable_via": "ssh nol8-demo",
+    "hostname": {
+      "value": "ip-10-8-10-40",
+      "provenance": "measured_now"
+    },
+    "instance_type": {
+      "value": "c6a.8xlarge",
+      "provenance": "measured_now"
+    },
+    "vcpu": {
+      "value": "32",
+      "provenance": "measured_now"
+    },
+    "boot_time": {
+      "value": "2026-07-27 06:44:26",
+      "provenance": "measured_now"
+    },
+    "kernel": {
+      "value": "7.0.0-1009-aws",
+      "provenance": "measured_now"
+    },
+    "dp4driver": {
+      "path": {
+        "value": "/opt/nol8/nol8-validation/demos/benchmark/datapoint4/results/dp4driver",
+        "provenance": "measured_now"
+      },
+      "mtime": {
+        "value": "2026-07-27 14:34:04.131342350 +0000",
+        "provenance": "measured_now"
+      },
+      "sha256": {
+        "value": "767333f5921bb2d7a04d6a50f9e4a1d12a77f1ac662fa15cb1b819001cb60c40",
+        "provenance": "measured_now"
+      }
+    },
+    "go_version": {
+      "value": "go version go1.22.5 linux/amd64",
+      "provenance": "measured_now"
+    }
+  },
+  "engine_hosts": {
+    "themis": {
+      "reachable_via": "ssh themis-demo",
+      "hostname": {
+        "value": "ip-10-10-1-254",
+        "provenance": "measured_now"
+      },
+      "instance_type": {
+        "value": "f2.6xlarge",
+        "provenance": "measured_now"
+      },
+      "vcpu": {
+        "value": "24",
+        "provenance": "measured_now"
+      },
+      "boot_time": {
+        "value": "2026-07-16 17:40:19",
+        "provenance": "measured_now"
+      },
+      "kernel": {
+        "value": "7.0.0-1008-aws",
+        "provenance": "measured_now"
+      },
+      "hugepages": {
+        "value": "HugePages_Total:      16 HugePages_Free:        3 Hugepagesize:    1048576 kB",
+        "provenance": "measured_now"
+      },
+      "processes": {
+        "value": [
+          {
+            "name": "apollo",
+            "pid": "67977",
+            "start_time": "Sat Jul 25 18:38:33 2026",
+            "cpus_allowed": "2",
+            "threads": "17",
+            "exe_sha256": "UNKNOWN"
+          }
+        ],
+        "provenance": "measured_now"
+      },
+      "core_counts_at_capture": {
+        "value": {
+          "apollo": "11.19"
+        },
+        "provenance": "measured_now"
+      }
+    },
+    "aergia": {
+      "reachable_via": "ssh aergia-demo",
+      "hostname": {
+        "value": "aergia",
+        "provenance": "measured_now"
+      },
+      "instance_type": {
+        "value": "c8a.8xlarge",
+        "provenance": "measured_now"
+      },
+      "vcpu": {
+        "value": "32",
+        "provenance": "measured_now"
+      },
+      "boot_time": {
+        "value": "2026-07-15 07:32:05",
+        "provenance": "measured_now"
+      },
+      "kernel": {
+        "value": "7.0.0-1008-aws",
+        "provenance": "measured_now"
+      },
+      "hugepages": {
+        "value": "HugePages_Total:      24 HugePages_Free:       12 Hugepagesize:    1048576 kB",
+        "provenance": "measured_now"
+      },
+      "processes": {
+        "value": [
+          {
+            "name": "apollo",
+            "pid": "94400",
+            "start_time": "Mon Jul 27 09:36:08 2026",
+            "cpus_allowed": "2",
+            "threads": "16",
+            "exe_sha256": "UNKNOWN"
+          },
+          {
+            "name": "aergia.real",
+            "pid": "94431",
+            "start_time": "Mon Jul 27 09:36:11 2026",
+            "cpus_allowed": "16-23",
+            "threads": "9",
+            "exe_sha256": "UNKNOWN"
+          }
+        ],
+        "provenance": "measured_now"
+      },
+      "core_counts_at_capture": {
+        "value": {
+          "apollo": "10.55",
+          "aergia.real": "8.19"
+        },
+        "provenance": "measured_now"
+      }
+    }
+  },
+  "measurement": {
+    "argus_nodes": {
+      "value": "10",
+      "provenance": "provided"
+    },
+    "policy": {
+      "path": {
+        "value": null,
+        "provenance": "unknown"
+      },
+      "rule_count": {
+        "value": "8000",
+        "provenance": "provided"
+      },
+      "sha256": {
+        "value": "UNKNOWN",
+        "provenance": "measured_now"
+      },
+      "deploy_utc": {
+        "value": null,
+        "provenance": "provided"
+      }
+    },
+    "corpus": {
+      "dir": {
+        "value": null,
+        "provenance": "provided"
+      },
+      "records": {
+        "value": null,
+        "provenance": "provided"
+      },
+      "avg_body_bytes": {
+        "value": null,
+        "provenance": "provided"
+      }
+    },
+    "density_coordinate": {
+      "value": null,
+      "provenance": "provided"
+    },
+    "concurrency": {
+      "value": "256",
+      "provenance": "provided"
+    },
+    "duration_s": {
+      "value": "20",
+      "provenance": "provided"
+    },
+    "payload": {
+      "value": "small",
+      "provenance": "provided"
+    },
+    "reps": {
+      "value": "1",
+      "provenance": "provided"
+    },
+    "utc_start": {
+      "value": null,
+      "provenance": "provided"
+    },
+    "utc_end": {
+      "value": null,
+      "provenance": "provided"
+    }
+  },
+  "drift": {
+    "prev_manifest": "artifacts/evidence/current-config.manifest.json",
+    "hardware_drift": [],
+    "run_param_changes": [],
+    "result": "clean"
+  }
+}

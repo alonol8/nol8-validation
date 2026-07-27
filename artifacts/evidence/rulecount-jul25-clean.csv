@@ -1,3 +1,4 @@
+# SUPERSEDED (findings 015): single-edge Jul25 — the flatness is the EDGE ceiling, NOT engine parity. OLD rig. See README.md.
 rule_count,rep,engine,concurrency,payload,records_used,avg_body_bytes,duration_s,completed,errors,rps,throughput_mib_s,p50_ms,p95_ms,p99_ms,p999_ms,min_ms,max_ms,mean_ms,tail_overflow
 1000,1,themis,256,small,4000,2604,15.0,430302,0,28686.8,71.26,8.862,13.868,16.262,19.259,1.562,29.288,8.925,0
 1000,2,themis,256,small,4000,2604,15.0,428989,0,28599.3,71.04,8.862,14.007,16.262,19.842,1.334,32.814,8.952,0

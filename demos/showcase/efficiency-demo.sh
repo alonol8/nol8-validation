@@ -10,18 +10,17 @@
 #
 #   bash demos/showcase/efficiency-demo.sh
 #
-# Throughput figures for the cores-per-throughput math come from the DP4 rule-count
-# sweep (small payloads, median of 3); override if you re-measure.
+# SOURCE OF TRUTH for cores + throughput: artifacts/evidence/efficiency-constants.json
+# (cores measured with 5 reps + spread in efficiency-idle/under-load-20260726.csv; use
+# efficiency-measure.sh to re-measure). This script is the quick live demo; the committed
+# numbers live in that JSON. Poll-mode -> idle should equal under-load (findings 009
+# item 5 confirms). Throughput defaults below are today's DP4 8k-cell medians (conc 256).
 set -uo pipefail
 
 THEMIS_HOST="${THEMIS_HOST:-themis-demo}"
 AERGIA_HOST="${AERGIA_HOST:-aergia-demo}"
-# Corrected throughput: DP4 10-Argus clean sweep, 8k rules, conc 256 (medians).
-# The old 28,600/26,300 were EDGE-limited (single Argus) — see DP4 brief. Cores are
-# poll-mode → verified flat idle→load (Themis apollo 10.91→11.29, Aergia apollo
-# 10.97→11.23 / lexers 8.17→8.01 under conc-256 load), so idle sampling is valid.
-THEMIS_RPS="${THEMIS_RPS:-76600}"
-AERGIA_RPS="${AERGIA_RPS:-56900}"
+THEMIS_RPS="${THEMIS_RPS:-76169}"
+AERGIA_RPS="${AERGIA_RPS:-55939}"
 WINDOW="${WINDOW:-4}"               # seconds to average core usage over
 
 # Sum utime+stime (fields 14,15) across all PIDs matching a name, twice, WINDOW

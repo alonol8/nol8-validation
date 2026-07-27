@@ -21,8 +21,9 @@ import json
 from pathlib import Path
 
 NUM_INT = {"concurrency", "records_used", "avg_body_bytes", "completed", "errors", "tail_overflow"}
-NUM_FLT = {"duration_s", "rps", "throughput_mib_s", "p50_ms", "p95_ms", "p99_ms",
-           "p999_ms", "min_ms", "max_ms", "mean_ms"}
+NUM_FLT = {"duration_s", "rps", "request_mib_s", "p50_ms", "p95_ms", "p99_ms",
+           "p999_ms", "min_ms", "max_ms", "mean_ms",
+           "err_p50_ms", "err_p99_ms", "stall_seconds_total", "wall_elapsed_s"}
 
 
 def load_cells(csv_path: Path) -> list[dict]:
