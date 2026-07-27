@@ -35,6 +35,8 @@ in `docs/issues/` (`ISSUE-NNN`), aligned 1:1 — **ISSUE-N = THM-N**.
 | THM-5 | ISSUE-005 | Replacements truncate at 15 characters (KB-001) | Medium | Open, worked around |
 | THM-6 | ISSUE-006 | Evaluation environment unreachable externally | High | Open, not reported |
 | THM-7 | ISSUE-007 | No way to check whether the runtime is healthy | Medium | Open, not reported |
+| THM-8 | - | The engines disagree on overlapping-match semantics | **High** | Open, needs an engineering answer |
+| THM-9 | - | Themis: 2 divergent responses in 2.14M under load | Unknown | Open, uncharacterised |
 
 ### Operator tooling - OPS
 
@@ -174,6 +176,42 @@ just liveness, would have made it a thirty-second fix.
 record and aborts with the remedy rather than generating a full run of
 failures. It cannot distinguish paused from dead - nothing client-side can - so
 it names both and leads with the cheap fix.
+
+## THM-8 - The engines disagree on overlapping-match semantics
+
+When two matches share a byte there are two self-consistent answers, and the two
+engines pick different ones. On 500 real business emails under a policy of
+space-delimited common words, Aergia reproduced one-byte-one-match 500/500 and
+Themis reproduced every-match-fires instead.
+
+```
+rules " to " " me " " be " -> removed;  input "There seem to me to be two questions"
+one-byte-one-match   "There seem me be two questions"
+every-match-fires    "There seem    two questions"    <- Themis, byte for byte
+```
+
+**Why it matters:** neither engine is corrupting anything, so this is a
+specification question rather than a defect - but until it is answered, a
+validation framework cannot score an overlapping policy without choosing sides,
+and the two engines cannot be claimed to produce identical output.
+
+It stayed hidden because the identifier catalogs exclude overlapping literals by
+construction. A policy of words overlaps in nearly every sentence.
+
+Detail and reproduction: `docs/issues/internal/ENGINE-SEMANTICS.md` (ES-1).
+
+## THM-9 - Themis: 2 divergent responses in 2.14 million under load
+
+A verified load run found 2 responses out of 2,144,853 that did not match the
+oracle; a repeat of the same cell found none. Only visible with full-coverage
+verification - a sample of a few hundred would never see it.
+
+**Why it matters:** possibly nothing, possibly a rare load-dependent fault. It is
+recorded rather than reported because it is uncharacterised: nobody has yet
+established whether it reproduces, whether it is load-dependent, or what the
+divergent bytes were. Do not raise it until that is done.
+
+Detail: `docs/issues/internal/ENGINE-SEMANTICS.md` (ES-3).
 
 ---
 
@@ -412,6 +450,53 @@ real `.env`.
 **Deferred (chosen scope):** the full architectural layer-split of `main.py` -
 high churn on a working core, "before external release" value not needed pre-demo.
 
+## FW-12 - KB-001 attributed truncation to the wrong engine (FIXED)
+
+KB-001 recorded that "Themis runtime truncates replacement strings longer than
+15 characters", and the README documents
+`validate compare --replacement-max-length 15` as the standard normalisation.
+
+Measured on an identical policy and corpus: **Themis returns tokens intact**
+(2,144,853 responses, none truncated) and **Aergia cuts every one at exactly 15
+characters**, because its rule record has a fixed 15-byte `replacement[15]`
+field. So the normalisation is wrong against Themis - it discards a correct
+answer - and right against Aergia.
+
+Now: the generator keeps every token inside the budget
+(`_assert_replacements_within_budget`), so neither engine truncates and one
+expectation serves both. KB-001 carries the correction; the flag remains
+available for checking older policies.
+
+## FW-13 - Corpora were unrealistic as measurement inputs (FIXED)
+
+Good for proving correctness, misleading for measuring throughput. Seven of nine
+scenarios listed sensitive values as `validation_rule_1: <value>` on labelled
+lines; no near misses existed, so nothing could be falsely matched; documents
+were padded with one repeated sentence; the driver replayed 4,000 bodies
+hundreds of times per window; and nothing recorded how dense a corpus was.
+
+Now: values are placed by document type and value type, near misses are derived
+from the catalog and verified non-matching, filler is composed per document, a
+bulk-export scenario provides the dense workload, and every manifest carries an
+`input_profile` recording the regime.
+
+Detail: `docs/CORPUS-REALISM.md`.
+
+## FW-14 - Throughput was measured without checking output (FIXED)
+
+The load driver checked HTTP status and drained the body, so a 200 carrying
+corrupted output counted as a success. Most throughput figures taken before
+2026-07-27 were gathered that way.
+
+It matters more than it sounds: a 5,000-rule run reported 674,893 successful
+responses of which **every one was wrong** (FW-12), and no throughput number
+would ever have shown it.
+
+Now: `expected-digests.py` precomputes the oracle's answer as md5 digests, one
+per record per contract, and `dp4driver --expected` checks every response
+against them. `verify-corpus.py` covers the sampled case and reports which
+overlap contract an engine followed.
+
 ---
 
 # OBS - Recorded, deliberately not findings
@@ -467,6 +552,8 @@ live path.
 | `docs/issues/` | engineering-facing register: ISSUE-001..007, one sendable doc each, plus README index |
 | `docs/issues/internal/ISSUE-004-corruption-investigation.md` | THM-4 evidence and reproduction (internal) |
 | `docs/issues/internal/KNOWN_BEHAVIORS.md` | KB-001 (THM-5) and the THM-4 authoring constraint |
+| `docs/issues/internal/ENGINE-SEMANTICS.md` | THM-8, THM-9, and the KB-001 re-attribution, with reproductions |
+| `docs/CORPUS-REALISM.md` | what the generated corpora contain and the density they reach |
 | `docs/CODE_REVIEW_PLAN.md` | FW-1 to FW-7 with tiering |
 | `docs/issues/internal/technical_debt.md` | minor framework debt, no customer impact |
 | `docs/architecture/validation-boundaries.md` | what the framework does and does not prove |

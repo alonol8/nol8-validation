@@ -1,12 +1,24 @@
 """Common-word reductions: the vocabulary behind the token-reduction use case.
 
-Text sent to an embedding pipeline or a model is billed by the token, and a
-large fraction of any business corpus is words that carry no retrieval value or
-that have a shorter equivalent. "In order to" is three tokens that mean "to".
-"Approximately" is a long word meaning "about". "The", "of" and "and" are pure
-structure. Rewriting and dropping them deterministically, before the text
-reaches the expensive stage, reduces what is billed without changing what the
-text says.
+Text sent to an embedding pipeline or a model is billed by the token, and some
+of any business corpus is words with a shorter equivalent or no retrieval value
+at all. "In order to" is three tokens that mean "to". "Approximately" is a long
+word meaning "about". "Best regards" is courtesy. Rewriting and dropping those
+deterministically, before the text reaches the expensive stage, reduces what is
+billed without changing what the text says.
+
+**The bar is that the meaning survives, and it is not negotiable.** An earlier
+version of this table also deleted function words - "the", "to", "of", "and" -
+on the theory that a model reads around the damage. It does not: prepositions
+carry argument structure, and "send the report to Bob" becoming "send report
+Bob" loses who receives it. That version reported 16-24% token savings, which
+were savings from destroying text, and they are withdrawn. What is left saves
+far less and says the same thing afterwards.
+
+Expect a small number. Measured on 196 KB of real English this table earns
+around 0.3 matches/KB, because substitutions that are safe in every context are
+genuinely rare. The honest saving on business email comes mostly from the
+boilerplate entries.
 
 This is literal replacement, which is what the engine does: a fixed list of
 strings, each mapped to a shorter string or to nothing. No parsing, no grammar,
@@ -139,84 +151,6 @@ STOPWORDS: tuple[str, ...] = (
 )
 
 
-# Substitutions that leave text a reader would call wrong, and a model reads
-# without difficulty. "The following week" becoming "the after week" is not
-# English, and it is entirely recoverable - which is the only bar that matters
-# when the next stage is an embedding pipeline rather than a person.
-#
-# This is where the volume is. The conservative table above had to survive every
-# grammatical context it might land in, and what survived that filter is the
-# formal register - "notwithstanding", "endeavour" - which is genuinely rare:
-# 0.3 matches/KB on real English. Dropping the grammaticality requirement admits
-# the common words, and the abbreviations, which is most of the saving.
-#
-# The line that does not move is meaning. A model can repair broken agreement
-# from context; it cannot recover a negation that was deleted. Nothing here
-# touches "not", "no", "never", "nor", "without" or "only".
-AGGRESSIVE_WORDS: dict[str, str] = {
-    # common words the conservative table had to reject
-    "additional": "more",
-    "concerning": "about",
-    "currently": "now",
-    "determine": "find",
-    "ensure": "confirm",
-    "establish": "set up",
-    "facilitate": "help",
-    "following": "after",
-    "however": "but",
-    "identify": "find",
-    "immediately": "now",
-    "implement": "make",
-    "indicate": "show",
-    "necessary": "needed",
-    "operational": "working",
-    "previously": "before",
-    "proceed": "go",
-    "provide": "give",
-    "provided": "gave",
-    "purchased": "bought",
-    "receive": "get",
-    "received": "got",
-    "regarding": "about",
-    "significant": "big",
-    "important": "key",
-    "available": "ready",
-    "request": "ask",
-    "requested": "asked",
-    "required": "needed",
-    "additional": "more",
-    # abbreviations a model expands without being told
-    "application": "app",
-    "applications": "apps",
-    "communication": "comms",
-    "configuration": "config",
-    "development": "dev",
-    "documentation": "docs",
-    "environment": "env",
-    "implementation": "impl",
-    "information": "info",
-    "management": "mgmt",
-    "operations": "ops",
-    "opportunity": "chance",
-    "organisation": "org",
-    "organization": "org",
-    "performance": "perf",
-    "repository": "repo",
-    "responsibility": "duty",
-    "specification": "spec",
-    "specifications": "specs",
-}
-
-AGGRESSIVE_PHRASES: dict[str, str] = {
-    "a number of": "some",
-    "as a result of": "from",
-    "as well as": "and",
-    "for the purpose of": "to",
-    "in addition to": "plus",
-    "in relation to": "about",
-    "the majority of": "most",
-}
-
 # Contractions. Two tokens become one and the meaning is untouched, which makes
 # these the cheapest entries in the table - and unusually valuable, because they
 # are the only safe way to shorten a negation. " do not " must not lose its
@@ -303,84 +237,36 @@ ABBREVIATIONS: dict[str, str] = {
     "without": "w/o",
 }
 
-# The function words that make up the bulk of English. Removing them is
-# textbook preprocessing before embedding, and it is where the volume is: the
-# entries above are the formal register and are individually rare, while these
-# are a quarter to a third of every document.
-#
-# The trade is explicit and belongs to the operator. Conservative reduction
-# leaves prose a person can still read; this does not, and is only appropriate
-# where the output is headed for an embedding pipeline rather than a reader.
-# Some retrieval models also do worse without function words, so this is a cost
-# decision, not a free win.
-#
-# Negations are deliberately absent - "not", "no", "nor", "never". They are
-# structurally stopwords and semantically the opposite: dropping them turns a
-# denial into an affirmation, and no token saving is worth inverting the meaning
-# of a sentence before it is indexed.
-FUNCTION_WORDS: tuple[str, ...] = (
-    "a", "an", "and", "are", "as", "at", "be", "been", "being", "but", "by",
-    "can", "could", "did", "do", "does", "for", "from", "had", "has", "have",
-    "he", "her", "here", "him", "his", "how", "i", "if", "in", "into", "is",
-    "it", "its", "may", "me", "might", "much", "must", "my", "of", "on", "one",
-    "or", "our", "out", "over", "own", "she", "should", "so", "some", "such",
-    "than", "that", "the", "their", "them", "then", "there", "these", "they",
-    "this", "those", "through", "to", "up", "was", "we", "were", "what", "when",
-    "where", "which", "while", "who", "why", "will", "with", "would", "you",
-    "your",
-)
 
-
-def reduction_rules(profile: str = "conservative") -> list[tuple[str, str]]:
+def reduction_rules() -> list[tuple[str, str]]:
     """Every reduction as a (literal, replacement) pair, space-delimited.
-
-    `conservative` rewrites and drops only where the output remains readable
-    prose. `aggressive` adds function-word removal on top, which is where most
-    of the token saving is and which produces text meant for a pipeline rather
-    than a person.
 
     Sorted longest-first so a reader of the generated policy sees the phrases
     before the words they contain. The engine resolves overlaps leftmost-longest
     regardless of file order, so " in order to " wins over the " to " inside it -
     which is the intended result, and the reason phrases are worth having.
     """
-    if profile not in ("conservative", "aggressive"):
-        raise ValueError(
-            f"Unknown reduction profile {profile!r}; "
-            "expected 'conservative' or 'aggressive'."
-        )
-
     pairs: list[tuple[str, str]] = []
+    seen: set[str] = set()
+
+    def add(source: str, replacement: str) -> None:
+        literal = f" {source} "
+        if literal not in seen:
+            pairs.append((literal, replacement))
+            seen.add(literal)
+
+    for phrase in EMAIL_BOILERPLATE:
+        add(phrase, " ")
     for phrase, replacement in PLAINER_PHRASES.items():
-        pairs.append((f" {phrase} ", f" {replacement} "))
+        add(phrase, f" {replacement} ")
+    for phrase, replacement in CONTRACTIONS.items():
+        add(phrase, f" {replacement} ")
     for word, replacement in PLAINER_WORDS.items():
-        pairs.append((f" {word} ", f" {replacement} "))
+        add(word, f" {replacement} ")
+    for word, replacement in ABBREVIATIONS.items():
+        add(word, f" {replacement} ")
     for word in STOPWORDS:
-        pairs.append((f" {word} ", " "))
-
-    if profile == "aggressive":
-        existing = {literal for literal, _ in pairs}
-
-        def add(source: str, replacement: str) -> None:
-            literal = f" {source} "
-            if literal not in existing:
-                pairs.append((literal, replacement))
-                existing.add(literal)
-
-        # Longest and most specific first, so the intent is legible in the file.
-        # The engine resolves overlaps leftmost-longest whatever the order.
-        for phrase in EMAIL_BOILERPLATE:
-            add(phrase, " ")
-        for phrase, replacement in AGGRESSIVE_PHRASES.items():
-            add(phrase, f" {replacement} ")
-        for phrase, replacement in CONTRACTIONS.items():
-            add(phrase, f" {replacement} ")
-        for word, replacement in AGGRESSIVE_WORDS.items():
-            add(word, f" {replacement} ")
-        for word, replacement in ABBREVIATIONS.items():
-            add(word, f" {replacement} ")
-        for word in FUNCTION_WORDS:
-            add(word, " ")
+        add(word, " ")
 
     pairs.sort(key=lambda pair: (-len(pair[0]), pair[0]))
     return pairs
