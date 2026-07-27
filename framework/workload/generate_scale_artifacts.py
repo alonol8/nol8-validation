@@ -17,13 +17,23 @@ from framework.policy.matching import (
     resolve_non_overlapping,
 )
 from framework.policy.overlap import find_contained_literals
+from framework.scenarios.database_export import build_export
+from framework.scenarios.placement import place_rules
 from framework.scenarios.support_ticket import build_support_ticket
+from framework.workload import near_miss as near_miss_module
+from framework.workload import prose
 from framework.workload.generate_workload import (
     _generate_field_value,
     _pad_document,
     _serialize_record,
     _weighted_item,
     load_workload,
+)
+from framework.workload.near_miss import (
+    NearMiss,
+    NearMissFactory,
+    NearMissSupply,
+    reference_sentence,
 )
 
 
@@ -63,20 +73,56 @@ def is_scale_workload(config: Mapping[str, Any]) -> bool:
 # that budget.
 REPLACEMENT_TRUNCATION_LIMIT = 15
 
+# How many distinct unwatched values a corpus draws on, at minimum. Small
+# policies still sit in a world containing many more parties than they list.
+_NEAR_MISS_POOL_MINIMUM = 2000
+
 _CATEGORY_ABBREVIATIONS = {
     "business_terms": "BIZ",
     "credentials": "CRED",
     "financial": "FIN",
-    "healthcare": "HEALTH",
-    "infrastructure": "INFRA",
+    "healthcare": "HLT",
+    "infrastructure": "INF",
+    "pii": "PII",
 }
 
-# Patterns whose names share a long prefix and would otherwise collide inside
-# the truncation budget - "internal_url" and "internal_product_name" both
-# reduce to "INTERNAL_" once a category prefix is applied.
+# Every pattern gets an explicit short form, because the token has to fit inside
+# the replacement budget whole rather than be cut down to it. Chosen to stay
+# readable in output a person has to skim: [PII:EMAIL] says what happened.
 _PATTERN_ABBREVIATIONS = {
-    "internal_url": "URL",
+    "access_token": "ATOKEN",
+    "api_key": "APIKEY",
+    "bank_account_number": "BANKACC",
+    "bearer_token": "BTOKEN",
+    "claim_number": "CLAIM",
+    "cloud_resource_id": "CLOUDID",
+    "connection_string": "CONNSTR",
+    "contract_number": "CONTRACT",
+    "credit_card_number": "CARD",
+    "customer_id": "CUST",
+    "database_uri": "DBURI",
+    "date_of_birth": "DOB",
+    "email_address": "EMAIL",
+    "employee_id": "EMP",
+    "hostname": "HOST",
+    "iban": "IBAN",
     "internal_product_name": "PRODUCT",
+    "internal_url": "URL",
+    "invoice_number": "INVOICE",
+    "ipv4_address": "IPV4",
+    "ipv6_address": "IPV6",
+    "medical_record_number": "MRN",
+    "member_id": "MEMBER",
+    "password": "PASSWD",
+    "patient_id": "PATIENT",
+    "person_name": "NAME",
+    "phone_number": "PHONE",
+    "private_key_marker": "PRIVKEY",
+    "project_codename": "PROJECT",
+    "routing_number": "ROUTING",
+    "social_security_number": "SSN",
+    "street_address": "ADDR",
+    "support_case_id": "CASE",
 }
 
 
@@ -84,6 +130,32 @@ def _replacement_token(category_id: str, pattern_id: str) -> str:
     category = _CATEGORY_ABBREVIATIONS.get(category_id, category_id.upper())
     pattern = _PATTERN_ABBREVIATIONS.get(pattern_id, pattern_id.upper())
     return f"[{category}:{pattern}]"
+
+
+def _assert_replacements_within_budget(rules: list[ScaleRule]) -> None:
+    """No replacement may exceed the budget, so none is ever truncated.
+
+    Comparison used to normalise for truncation after the fact
+    (`--replacement-max-length 15`). Keeping the tokens short instead removes
+    the need: the policy asks for a token the engines can actually emit, so
+    expected output is what the policy says rather than what survives a fixed
+    field, and the engines can be compared without an asterisk.
+
+    Measured on a 5,000-rule export corpus: with over-long tokens one engine
+    returned the full token and the other a 15-byte prefix, so every one of
+    674,893 responses differed. Neither was corrupting anything; they simply
+    could not both honour the policy as written.
+    """
+    over = sorted(
+        {rule.replacement for rule in rules
+         if len(rule.replacement.encode("utf-8")) > REPLACEMENT_TRUNCATION_LIMIT}
+    )
+    if over:
+        raise ValueError(
+            f"Replacement tokens exceed {REPLACEMENT_TRUNCATION_LIMIT} bytes and "
+            f"would be truncated by at least one engine, making expected output "
+            f"engine-specific: {', '.join(over)}"
+        )
 
 
 def _assert_replacements_distinct_when_truncated(rules: list[ScaleRule]) -> None:
@@ -156,6 +228,7 @@ def _rule_catalog(workload: Mapping[str, Any]) -> list[ScaleRule]:
                 replacement=replacement,
             )
         )
+    _assert_replacements_within_budget(rules)
     _assert_replacements_distinct_when_truncated(rules)
     return rules
 
@@ -302,34 +375,27 @@ def _deterministic_record(
     return record
 
 
-def _inject_rules(record: dict[str, Any], rules: list[ScaleRule]) -> None:
-    preferred_fields = (
-        "internal_notes",
-        "issue_description",
-        "message_body",
-        "message",
-        "request_body",
-        "response_body",
-        "description",
-        "retrieved_context",
-        "tool_output",
-        "model_response",
-        "user_prompt",
+def _inject_rules(
+    record: dict[str, Any],
+    rules: list[ScaleRule],
+    supply: NearMissSupply | None = None,
+    rng: random.Random | None = None,
+    scenario_name: str = "",
+    target_size: int | None = None,
+) -> None:
+    """Place values into a document of this scenario's type.
+
+    Delegates to `framework/scenarios/placement.py`, which knows where each
+    document type carries free text and what that text sounds like.
+    """
+    place_rules(
+        record,
+        scenario_name,
+        rules,
+        rng if rng is not None else random.Random(0),
+        supply,
+        target_size,
     )
-    injection_field = next(
-        (field for field in preferred_fields if field in record),
-        "validation_content",
-    )
-    existing = record.get(injection_field, "")
-    if isinstance(existing, (dict, list)):
-        existing_text = json.dumps(existing, sort_keys=True)
-    else:
-        existing_text = str(existing)
-    markers = [
-        f"validation_rule_{index}: {rule.variant}"
-        for index, rule in enumerate(rules, start=1)
-    ]
-    record[injection_field] = "\n".join([existing_text, *markers]).strip()
 
 
 def _build_realistic_customer_record(
@@ -338,6 +404,7 @@ def _build_realistic_customer_record(
     selected_rules: list[ScaleRule],
     catalog_values: set[str],
     rng: random.Random,
+    supply: NearMissSupply | None = None,
 ) -> dict[str, Any]:
     record = _deterministic_record(document_id, "customer_record", fields, rng)
     _separate_customer_record_from_catalog(record, catalog_values)
@@ -350,6 +417,11 @@ def _build_realistic_customer_record(
     }
     occupied: set[str] = set()
     notes = [str(record.get("internal_notes", "Account reviewed by customer care."))]
+    # Accounts reference other accounts - joint holders, prior owners, the party
+    # who made the referral. Whether any of them is watched is incidental.
+    related = _related_accounts(supply, rng)
+    if related:
+        record["related_accounts"] = related
     note_templates = {
         "pii": "Identity verification recorded {pattern}: {value}.",
         "credentials": "Security review referenced {pattern}: {value}.",
@@ -374,6 +446,13 @@ def _build_realistic_customer_record(
                 value=rule.variant,
             )
         )
+    # Servicing notes name whoever was involved, watched or not.
+    if supply is not None:
+        for near_miss in supply.take(rng.randint(1, 4)):
+            notes.insert(
+                rng.randrange(1, len(notes) + 1),
+                reference_sentence(near_miss, rng),
+            )
     record["internal_notes"] = " ".join(notes)
 
     if not selected_rules:
@@ -448,9 +527,47 @@ def _disjoint_customer_value(
     )
 
 
+def _related_accounts(
+    supply: NearMissSupply | None, rng: random.Random
+) -> list[dict[str, str]]:
+    """Other parties linked to this account, none of them on the policy list."""
+
+    if supply is None:
+        return []
+    relationships = (
+        "authorised contact",
+        "prior account holder",
+        "billing contact",
+        "referred by",
+        "shared household",
+        "successor account",
+    )
+    entries: list[dict[str, str]] = []
+    for near_miss in supply.take(rng.randint(0, 3), pattern_id="person_name"):
+        entry = {
+            "name": near_miss.value,
+            "relationship": rng.choice(relationships),
+        }
+        reference = supply.take_one(pattern_id="customer_id")
+        if reference is not None:
+            entry["account_reference"] = reference.value
+        entries.append(entry)
+    return entries
+
+
 def _expand_customer_record(
-    record: dict[str, Any], target_size: int, rng: random.Random
+    record: dict[str, Any],
+    target_size: int,
+    rng: random.Random,
+    supply: NearMissSupply | None = None,
 ) -> None:
+    """Grow a record toward its size target the way a real one grows.
+
+    A large account record is large because it has a long servicing history: many
+    short entries, written at different times, each naming whoever and whatever
+    was involved. Growing it that way rather than by repeating filler keeps a
+    large document a plausible document.
+    """
     history: list[dict[str, str]] = []
     actions = (
         "Account preferences reviewed",
@@ -458,19 +575,36 @@ def _expand_customer_record(
         "Billing inquiry resolved",
         "Support follow-up scheduled",
         "Consent preferences verified",
+        "Statement delivery method changed",
+        "Identity documents re-verified",
+        "Dispute closed without adjustment",
+        "Marketing preferences updated",
+        "Service tier confirmed",
     )
-    channels = ("customer portal", "support desk", "billing team", "mobile app")
+    channels = (
+        "customer portal",
+        "support desk",
+        "billing team",
+        "mobile app",
+        "branch visit",
+        "inbound call",
+        "secure message",
+    )
+    outcomes = ("completed", "completed", "completed", "no action required", "deferred")
     desired_content_size = max(0, target_size - 256)
     while len(json.dumps(record, sort_keys=True).encode("utf-8")) < desired_content_size:
         sequence = len(history) + 1
-        history.append(
-            {
-                "event_id": f"EVT-{sequence:04d}",
-                "summary": rng.choice(actions),
-                "channel": rng.choice(channels),
-                "outcome": "completed",
-            }
-        )
+        event = {
+            "event_id": f"EVT-{sequence:04d}",
+            "summary": rng.choice(actions),
+            "channel": rng.choice(channels),
+            "outcome": rng.choice(outcomes),
+            "note": prose.sentence(rng),
+        }
+        near_miss = supply.take_one() if supply is not None else None
+        if near_miss is not None:
+            event["note"] = f"{event['note']} {reference_sentence(near_miss, rng)}"
+        history.append(event)
         record["account_history"] = history
 
 
@@ -511,6 +645,42 @@ def _expected_result(
         for match in sorted(selected, key=lambda item: item.start)
     ]
     return expected, matches, overlap_count
+
+
+def _input_profile(
+    *,
+    payload_bytes_total: int,
+    expected_total: int,
+    near_miss_total: int,
+    distinct_rules_matched: int,
+    rule_count: int,
+    near_miss_density: tuple[float, float] | None,
+) -> dict[str, Any]:
+    """The content characteristics of the generated corpus.
+
+    Two corpora with the same record and rule counts can still be very different
+    bodies of text - one where a handful of values recur constantly, one where
+    thousands appear once each. Recording the difference means a result taken on
+    a corpus can be read against the corpus that produced it, and two runs can be
+    compared on something more than their record count.
+    """
+    kilobytes = payload_bytes_total / 1024.0 if payload_bytes_total else 0.0
+    return {
+        "matches_per_kb": round(expected_total / kilobytes, 3) if kilobytes else 0.0,
+        "near_misses_per_kb": round(near_miss_total / kilobytes, 3) if kilobytes else 0.0,
+        "near_miss_total": near_miss_total,
+        "near_miss_configured": near_miss_density is not None,
+        "near_miss_per_kb_range": (
+            list(near_miss_density) if near_miss_density is not None else None
+        ),
+        "distinct_rules_matched": distinct_rules_matched,
+        # How much of the deployed policy this corpus actually reaches. A
+        # deployed rule that no document ever contains is not being validated.
+        "rule_coverage": (
+            round(distinct_rules_matched / rule_count, 4) if rule_count else 0.0
+        ),
+        "filler_mode": "per_document",
+    }
 
 
 def generate_scale_artifacts(
@@ -598,6 +768,31 @@ def generate_scale_artifacts(
     rules_by_variant = {rule.variant: rule for rule in rules}
     literal_matcher = LiteralMatcher(rules_by_variant)
 
+    # Values of the same kinds as the catalog that are not on it. Absent from
+    # the workload config means disabled, so a workload written before this
+    # option existed produces byte-identical artifacts to before.
+    near_miss_density = near_miss_module.parse_density(
+        documents.get("near_miss_distribution")
+    )
+    near_miss_pool: tuple[NearMiss, ...] = ()
+    if near_miss_density is not None:
+        literals_by_pattern: dict[str, list[str]] = {}
+        for rule in rules:
+            literals_by_pattern.setdefault(rule.pattern_id, []).append(rule.variant)
+        near_miss_factory = NearMissFactory(
+            matcher=literal_matcher,
+            literals_by_pattern=literals_by_pattern,
+        )
+        # The almost-matching text a corpus draws on, sized against the catalog
+        # so a large policy is surrounded by correspondingly varied text, with a
+        # floor so a small policy is not surrounded by three strings.
+        near_miss_pool = near_miss_factory.build_pool(
+            max(_NEAR_MISS_POOL_MINIMUM, len(rules)),
+            random.Random(int(workload["seed"]) + 1),
+        )
+    near_miss_total = 0
+    matched_variants: set[str] = set()
+
     _report_progress(
         progress_callback, "documents_started", 0, realized_records
     )
@@ -629,8 +824,22 @@ def generate_scale_artifacts(
                     int(size_profile["maximum_bytes"]),
                 )
 
+                # Sized from the document, not from how many of its identifiers
+                # happen to be watched: the share of a record that looks like an
+                # identifier is a property of the record.
+                near_miss_supply = NearMissSupply(
+                    near_miss_pool,
+                    rng,
+                    near_miss_module.density_budget(
+                        target_size, near_miss_density, rng
+                    )
+                    if near_miss_density is not None
+                    else 0,
+                )
+
                 realistic_scenario = (
-                    size_profile_name == "small"
+                    scenario_name == "database_export"
+                    or size_profile_name == "small"
                     and (
                         (
                             scenario_name == "customer_record"
@@ -642,7 +851,23 @@ def generate_scale_artifacts(
                         )
                     )
                 )
-                if (
+                export_text: str | None = None
+                if scenario_name == "database_export":
+                    # A bulk export is a CSV file, not a record that happens to
+                    # be serialised as one, so it bypasses the serializer and is
+                    # used as the document verbatim.
+                    export = build_export(
+                        document_id,
+                        rng,
+                        rules,
+                        match_count,
+                        target_size,
+                        near_miss_supply,
+                    )
+                    export_text = export.text
+                    selected_rules = list(export.placed)
+                    record = {}
+                elif (
                     scenario_name == "customer_record"
                     and format_name in {"json", "csv"}
                     and size_profile_name == "small"
@@ -653,8 +878,11 @@ def generate_scale_artifacts(
                         selected_rules,
                         {rule.variant for rule in rules},
                         rng,
+                        near_miss_supply,
                     )
-                    _expand_customer_record(record, target_size, rng)
+                    _expand_customer_record(
+                        record, target_size, rng, near_miss_supply
+                    )
                 elif (
                     scenario_name == "support_ticket"
                     and format_name == "json"
@@ -666,6 +894,7 @@ def generate_scale_artifacts(
                         rng,
                         selected_rules,
                         {rule.variant for rule in rules},
+                        near_miss_supply,
                     )
                     record = support_ticket.record
                     selected_rules = [
@@ -678,8 +907,15 @@ def generate_scale_artifacts(
                         list(scenario["fields"]),
                         rng,
                     )
-                    _inject_rules(record, selected_rules)
-                message = _serialize_record(
+                    _inject_rules(
+                        record,
+                        selected_rules,
+                        near_miss_supply,
+                        rng,
+                        scenario_name,
+                        target_size,
+                    )
+                message = export_text if export_text is not None else _serialize_record(
                     record=record,
                     format_name=format_name,
                     scenario_name=scenario_name,
@@ -717,6 +953,8 @@ def generate_scale_artifacts(
                     message, literal_matcher, rules_by_variant
                 )
                 kind = "dirty" if expected_matches else "clean"
+                near_miss_total += near_miss_supply.used
+                matched_variants.update(match["variant"] for match in expected_matches)
 
                 if overlap_count:
                     documents_with_overlaps += 1
@@ -812,6 +1050,16 @@ def generate_scale_artifacts(
         "overlapping_match_documents": documents_with_overlaps,
         "overlapping_match_examples": overlap_examples,
         "intended_clean_with_literals": intended_clean_with_literals,
+        # What this corpus actually contains, as distinct from what was asked
+        # for. Any result quoted from a run should be quoted with it.
+        "input_profile": _input_profile(
+            payload_bytes_total=payload_bytes_total,
+            expected_total=expected_total,
+            near_miss_total=near_miss_total,
+            distinct_rules_matched=len(matched_variants),
+            rule_count=len(rules),
+            near_miss_density=near_miss_density,
+        ),
         "requested_scale": {
             "rule_count": requested_rules,
             "record_count": requested_records,

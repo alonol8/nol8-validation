@@ -25,15 +25,32 @@ Current defects affecting validation:
 
 ### KB-001 - Replacement strings truncated to 15 characters
 
-Status: Confirmed runtime limitation  
-Disposition: Documented Themis behavior boundary  
+Status: Confirmed limitation  
+Disposition: **Re-attributed 2026-07-27 - this is Aergia, not Themis**  
 Owner: Engineering  
 Discovered: 2026-07-16  
 Discovered by: Functional validation suite  
 
+> **Attribution correction (2026-07-27).** This entry originally recorded the
+> truncation as Themis behaviour. Measured on an identical 5,000-rule policy and
+> corpus, **Themis returns replacement tokens intact** - 2,144,853 responses
+> verified, none truncated - while **Aergia cuts every token at exactly 15
+> characters**. The mechanism is the fixed 15-byte `replacement[15]` field in the
+> Aergia rule record (`docs/utilities.md`, `dumputil --aergia`).
+>
+> Practical effect: `validate compare --replacement-max-length 15` is **wrong
+> against Themis** - it discards a correct full-length answer - and remains
+> correct against Aergia. The scale generator now keeps every token inside 15
+> bytes so neither engine truncates and one expectation serves both.
+>
+> Evidence and byte-level diff: `docs/issues/internal/ENGINE-SEMANTICS.md`
+> (ES-2). Whether Themis ever truncated and was fixed, or the behaviour was
+> misattributed from the start, is not established.
+
 Description
 
-Themis runtime truncates replacement strings longer than 15 characters during transformation processing.
+The runtime truncates replacement strings longer than 15 characters during
+transformation processing.
 
 The validation framework generates complete replacement values correctly and policy deployment succeeds. The truncation occurs during runtime transformation execution.
 

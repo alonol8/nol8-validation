@@ -30,7 +30,16 @@ mkdir -p "$RESULTS"
 # transient shared-host noise without regenerating.
 RULE_COUNTS="${DP4_RULE_COUNTS:-1000 2000 4000 6000 8000 10000 12000}"
 REPS="${DP4_RC_REPS:-3}"
-RECORDS="${DP4_RC_RECORDS:-15000}"    # ~40% small band -> >=4,000 distinct small bodies
+# This sweep drives the small band only, so it generates the small band only.
+# Against the full size distribution ~95% of the bytes would be medium, large
+# and near-limit documents that are written to disk and never sent - tens of GB
+# per rule count, and minutes of generation, for nothing.
+#
+# Every record is therefore a distinct small body, and the driver holds all of
+# them. A working set small enough to be replayed hundreds of times inside one
+# measurement window is not the working set a live endpoint sees.
+RECORDS="${DP4_RC_RECORDS:-20000}"
+CAP_SMALL="${DP4_RC_CAP_SMALL:-20000}"
 CONC="${DP4_RC_CONC:-256}"            # fixed, near Themis small peak and well-parallelized
 PAYLOAD="${DP4_RC_PAYLOAD:-small}"
 DURATION="${DP4_RC_DURATION:-15}"
@@ -45,9 +54,22 @@ echo ">> building the load driver"
 OUT="$RESULTS/rulecount.csv"
 rm -f "$OUT"
 
+# Small-band-only variant of the real generator. Everything else - scenarios,
+# formats, match distribution, near misses - is untouched.
+SWEEP_CONFIG=/tmp/edlp-rulecount.yaml
+python - "$SWEEP_CONFIG" <<'PY'
+import sys, yaml
+c = yaml.safe_load(open("config/workloads/enterprise-dlp.yaml"))
+c["documents"]["size_distribution"] = {"small": {"weight": 100,
+    "pad_to_target": True, "minimum_bytes": 512, "maximum_bytes": 4096}}
+yaml.safe_dump(c, open(sys.argv[1], "w"), sort_keys=False)
+PY
+echo ">> generating small-band documents only (this sweep sends nothing else)"
+
 for R in $RULE_COUNTS; do
   echo ">> ===== rule_count=$R ====="
-  GEN_OUT="$(validate generate --config config/workloads/enterprise-dlp.yaml --records "$RECORDS" --rules "$R" 2>&1)"
+  echo "   generating $RECORDS records / $R rules (a few minutes)"
+  GEN_OUT="$(validate generate --config "$SWEEP_CONFIG" --records "$RECORDS" --rules "$R" 2>&1)"
   RUN_DIR="$(printf '%s\n' "$GEN_OUT" | awk -F': +' '/Run directory:/{print $2}')"
   POLICY="$RUN_DIR/generated/scale-policy.nol"
   INPUT="$RUN_DIR/generated/input.jsonl"
@@ -68,7 +90,7 @@ for R in $RULE_COUNTS; do
         --engine "$engine" --label "$engine" --input "$INPUT" \
         --concurrency "$CONC" --payloads "$PAYLOAD" \
         --warmup "$WARMUP" --duration "$DURATION" \
-        --cap-small 4000 --cap-medium 4000 --cap-large 4000 \
+        --cap-small "$CAP_SMALL" --cap-medium 4000 --cap-large 4000 \
         --output "$RESULTS/rc_${engine}.csv" | sed 's/^/      /'
       [ -f "$RESULTS/rc_${engine}.csv" ] || continue
       if [ ! -f "$OUT" ]; then echo "rule_count,rep,$(head -1 "$RESULTS/rc_${engine}.csv")" > "$OUT"; fi

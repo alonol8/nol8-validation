@@ -1,0 +1,131 @@
+name: database-export
+version: 0.1
+description: >
+  Bulk table exports - customer master data, payment ledgers, claims batches,
+  access logs. The workload where governed values are the content of the
+  document rather than values sprinkled through prose, and therefore the dense
+  end of what a scanner is asked to do.
+
+  An inline guardrail on correspondence sees a few matches per kilobyte. A bulk
+  scan of a customer table before it leaves the building sees thirty or more,
+  because every column of every row is something a policy governs. Both are real
+  workloads; this is the one that decides whether an engine keeps up.
+
+seed: 42
+
+policy:
+  rule_count: 5000
+
+  # Only the families a table export actually has columns for. A customer master
+  # file has no column for an API key, so including credentials here would
+  # generate rules that no document can ever contain.
+  families:
+    pii:
+      weight: 45
+      patterns:
+        - person_name
+        - email_address
+        - phone_number
+        - street_address
+        - date_of_birth
+
+    business_terms:
+      weight: 25
+      patterns:
+        - customer_id
+        - employee_id
+
+    financial:
+      weight: 15
+      patterns:
+        - bank_account_number
+        - routing_number
+        - invoice_number
+
+    healthcare:
+      weight: 10
+      patterns:
+        - patient_id
+        - member_id
+        - claim_number
+
+    infrastructure:
+      weight: 5
+      patterns:
+        - ipv4_address
+        - hostname
+
+documents:
+  count: 20000
+  progress_interval_records: 2000
+
+  # Rows for parties the policy does not list. A real export contains every
+  # customer, of whom the watched ones are a minority, so these are ordinary
+  # content rather than an addition - and they are what a scanner has to read
+  # and reject.
+  near_miss_distribution:
+    per_kilobyte:
+      minimum: 3
+      maximum: 8
+
+  scenarios:
+    database_export:
+      weight: 100
+      fields:
+        - customer_id
+
+  formats:
+    csv:
+      weight: 100
+
+  # How many governed values a file carries, which decides how many of its rows
+  # belong to watched parties. "heavy" is a table pulled for a compliance
+  # review; "light" is a routine export that happens to contain a few.
+  match_distribution:
+    light:
+      weight: 20
+      matches_per_document:
+        minimum: 5
+        maximum: 20
+
+    moderate:
+      weight: 30
+      matches_per_document:
+        minimum: 20
+        maximum: 60
+
+    heavy:
+      weight: 50
+      matches_per_document:
+        minimum: 60
+        maximum: 140
+
+  # Export files are chunked for transport rather than sent whole, so the small
+  # band is the realistic shape and it keeps documents inside the driver's small
+  # payload bucket. Exports are never padded - the rows are the content.
+  size_distribution:
+    small:
+      weight: 100
+      pad_to_target: false
+      minimum_bytes: 1500
+      maximum_bytes: 4000
+
+validation:
+  track_expected_matches: true
+  track_expected_replacements: true
+  preserve_original_document: true
+  generate_clean_control_records: true
+
+  detect:
+    - false_positive
+    - false_negative
+    - incorrect_replacement
+    - truncated_replacement
+    - malformed_output
+    - unexpected_content_change
+
+output:
+  policy_file: generated/database-export-policy.nol
+  records_file: generated/database-export-records.jsonl
+  manifest_file: generated/database-export-manifest.json
+  expected_results_file: generated/database-export-expected.jsonl
