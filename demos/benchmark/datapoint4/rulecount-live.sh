@@ -98,15 +98,31 @@ for R in $RULE_COUNTS; do
     if [ $((rep % 2)) -eq 1 ]; then ORDER="themis aergia"; else ORDER="aergia themis"; fi
     for engine in $ORDER; do
       echo "   -- $engine rule_count=$R rep $rep/$REPS (order: $ORDER)"
+      # Per-cell driver-host CPU headroom (findings 011 step 2): the check that
+      # stops the load generator being the answer again. The probe tails the
+      # driver's MEASURE window (robust to variable corpus-load time) and is
+      # stopped the instant the driver returns; the two numbers land in the CSV
+      # beside errors and stall. Read-only /proc/stat -> zero test impact.
+      CPUTMP="$(mktemp)"
+      bash "$PACK/driver-cpu-probe.sh" --tail "$DURATION" > "$CPUTMP" & CPUPID=$!
       "$RESULTS/dp4driver" \
         --engine "$engine" --label "$engine" --input "$INPUT" \
         --concurrency "$CONC" --payloads "$PAYLOAD" \
         --warmup "$WARMUP" --duration "$DURATION" \
         --cap-small 4000 --cap-medium 4000 --cap-large 4000 \
         --output "$RESULTS/rc_${engine}.csv" | sed 's/^/      /'
+      kill -TERM "$CPUPID" 2>/dev/null; wait "$CPUPID" 2>/dev/null || true
+      read -r DCPU DMAXCORE < "$CPUTMP" 2>/dev/null || { DCPU=NA; DMAXCORE=NA; }
+      rm -f "$CPUTMP"
+      # Driver-limited if the box is broadly hot (>70%) OR a single core is pinned
+      # (>90%) — the two shapes of "the load generator was the limit". Flag it AT
+      # THE TIME so a suspect cell is visible during the run, not months later.
+      DFLAG=no
+      awk "BEGIN{exit !((${DCPU:-0}+0)>70 || (${DMAXCORE:-0}+0)>90)}" 2>/dev/null && DFLAG=yes
+      [ "$DFLAG" = yes ] && echo "      !! DRIVER CPU ${DCPU}% (busiest core ${DMAXCORE}%) > threshold -- cell may be DRIVER-LIMITED; read this engine rps with suspicion"
       [ -f "$RESULTS/rc_${engine}.csv" ] || continue
-      if [ ! -f "$OUT" ]; then echo "rule_count,rep,$(head -1 "$RESULTS/rc_${engine}.csv")" > "$OUT"; fi
-      tail -n +2 "$RESULTS/rc_${engine}.csv" | sed "s/^/$R,$rep,/" >> "$OUT"
+      if [ ! -f "$OUT" ]; then echo "rule_count,rep,$(head -1 "$RESULTS/rc_${engine}.csv"),driver_cpu_pct,driver_busiest_core_pct,driver_limited" > "$OUT"; fi
+      tail -n +2 "$RESULTS/rc_${engine}.csv" | sed "s/^/$R,$rep,/;s/\$/,$DCPU,$DMAXCORE,$DFLAG/" >> "$OUT"
     done
   done
   echo ">> rule_count=$R done"
