@@ -195,8 +195,8 @@ func buildClient(maxConc int, timeout time.Duration, insecure bool) *http.Client
 // per-request job id, so hashing the whole body would differ on every request
 // and report every response as wrong.
 type expectation struct {
-	oneByteOne  string
-	everyMatch  string
+	oneByteOne string
+	everyMatch string
 }
 
 type verifier struct {
@@ -523,11 +523,11 @@ func runCell(client *http.Client, engine, endpoint, token string, cb *corpusBuck
 	pr := runPhase(client, endpoint, token, cb.bodies, cb.indices, concurrency, steady, true, ec, v)
 
 	return cellResult{
-		Engine:       engine,
-		Concurrency:  concurrency,
-		Payload:      cb.name,
-		RecordsUsed:  len(cb.bodies),
-		AvgBytes:     cb.avgBytes(),
+		Engine:      engine,
+		Concurrency: concurrency,
+		Payload:     cb.name,
+		RecordsUsed: len(cb.bodies),
+		AvgBytes:    cb.avgBytes(),
 		// rps/throughput use the ISSUING window (steady), not wall-clock: workers
 		// accept work for exactly `steady`, so that is the interval the load was
 		// applied over. Wall-clock includes post-deadline drain of stalled requests
