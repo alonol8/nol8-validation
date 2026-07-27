@@ -64,7 +64,7 @@ class Cell:
         self.concurrency = int(row["concurrency"])
         self.rps = float(row["rps"])
         self.p99 = float(row["p99_ms"])
-        self.mib_s = float(row["throughput_mib_s"])
+        self.mib_s = float(row["request_mib_s"])
         self.errors = int(row["errors"])
         self.mean = float(row["mean_ms"])
 

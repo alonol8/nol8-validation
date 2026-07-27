@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 import tempfile
 import unittest
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 from io import StringIO
 from pathlib import Path
 from unittest.mock import patch
@@ -97,12 +97,18 @@ class PolicyCommandSurfaceTests(unittest.TestCase):
         self.parser = build_parser()
 
     def test_run_and_file_are_mutually_exclusive(self) -> None:
-        with self.assertRaises(SystemExit):
+        # argparse writes the usage/error to stderr before exiting; capture it so
+        # the deliberate validation failure does not leak into the suite output.
+        stderr = StringIO()
+        with self.assertRaises(SystemExit), redirect_stderr(stderr):
             self.parser.parse_args(["policy", "--run", "X", "--file", "Y"])
+        self.assertIn("not allowed with argument", stderr.getvalue())
 
     def test_one_source_is_required(self) -> None:
-        with self.assertRaises(SystemExit):
+        stderr = StringIO()
+        with self.assertRaises(SystemExit), redirect_stderr(stderr):
             self.parser.parse_args(["policy"])
+        self.assertIn("one of the arguments", stderr.getvalue())
 
     def test_status_needs_no_other_argument(self) -> None:
         args = self.parser.parse_args(["policy", "--status"])
