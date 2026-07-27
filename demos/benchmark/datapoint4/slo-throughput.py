@@ -85,27 +85,42 @@ def run_cell(engine: str, concurrency: int, args) -> Cell | None:
 
 
 def throughput_at_budget(cells: list[Cell], budget: float) -> tuple[float | None, str]:
-    """Throughput where the p99 curve crosses `budget`, and how it was obtained.
+    """The most throughput reachable while keeping p99 within `budget`.
 
-    Latency rises with concurrency once an engine is saturated, so the ladder is
-    monotone enough to interpolate between adjacent points. Interpolating rather
-    than reporting the nearest cell avoids crediting an engine with throughput it
-    only reaches by exceeding the budget.
+    Not the throughput where the p99 curve crosses the budget - that is only the
+    same thing while throughput is still rising. Past saturation an engine loses
+    throughput as concurrency climbs, so the crossing sits on the falling limb
+    and understates what the engine can do: Themis measured 128,821 req/s at a
+    24 ms p99, and reading the crossing at a 50 ms budget returned 122,372,
+    penalising it for a load level nobody would choose to run at.
+
+    So: the best of every operating point inside the budget - each measured
+    ladder point, plus the interpolated crossing on any segment that straddles
+    it, since concurrency is continuous and a point between two rungs is
+    genuinely reachable.
     """
     ordered = sorted(cells, key=lambda c: c.concurrency)
     if not ordered:
         return None, "no data"
-    if ordered[0].p99 > budget:
-        return None, f"cannot meet it (best p99 {ordered[0].p99:.1f} ms)"
-    if ordered[-1].p99 <= budget:
-        return ordered[-1].rps, "floor - never exceeded the budget, push harder"
+
+    reachable = [cell.rps for cell in ordered if cell.p99 <= budget]
 
     for lower, upper in zip(ordered, ordered[1:]):
-        if lower.p99 <= budget < upper.p99:
-            span = upper.p99 - lower.p99
-            weight = 0.0 if span <= 0 else (budget - lower.p99) / span
-            return lower.rps + weight * (upper.rps - lower.rps), "interpolated"
-    return ordered[-1].rps, "interpolated"
+        low, high = (lower, upper) if lower.p99 <= upper.p99 else (upper, lower)
+        if low.p99 <= budget < high.p99:
+            span = high.p99 - low.p99
+            weight = 0.0 if span <= 0 else (budget - low.p99) / span
+            reachable.append(low.rps + weight * (high.rps - low.rps))
+
+    if not reachable:
+        return None, f"cannot meet it (best p99 {min(c.p99 for c in ordered):.1f} ms)"
+
+    best = max(reachable)
+    if max(cell.p99 for cell in ordered) <= budget:
+        return best, "budget not binding - this is the measured peak"
+    if best >= max(cell.rps for cell in ordered) - 1e-9:
+        return best, "at peak throughput; the budget costs nothing"
+    return best, "interpolated"
 
 
 def main() -> int:
