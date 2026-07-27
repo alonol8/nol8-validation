@@ -34,7 +34,19 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT))
 
-from framework.policy.matching import LiteralMatcher, resolve_non_overlapping  # noqa: E402
+from framework.policy.matching import (  # noqa: E402
+    LiteralMatcher,
+    apply_leftmost_longest,
+    apply_overlap_aware,
+)
+
+# The two transformation contracts a literal engine can implement. They agree
+# whenever matches are disjoint and differ whenever matches share a byte, so an
+# engine is adjudicated against both rather than against a guess.
+CONTRACTS = {
+    "one-byte-one-match": apply_leftmost_longest,
+    "every-match-fires": apply_overlap_aware,
+}
 
 _RULE = re.compile(r'^"((?:[^"\\]|\\.)*)"\s*->\s*"((?:[^"\\]|\\.)*)";\s*$')
 
@@ -80,16 +92,13 @@ def load_corpus(path: Path, limit: int | None) -> list[tuple[str, str]]:
     return documents
 
 
-def oracle_output(text: str, matcher: LiteralMatcher, rules: dict[str, str]) -> str:
-    selected = resolve_non_overlapping(matcher.find_all(text))
-    out: list[str] = []
-    cursor = 0
-    for match in selected:
-        out.append(text[cursor:match.start])
-        out.append(rules[match.literal])
-        cursor = match.end
-    out.append(text[cursor:])
-    return "".join(out)
+def oracle_outputs(
+    text: str, matcher: LiteralMatcher, rules: dict[str, str]
+) -> dict[str, str]:
+    """What each contract says the output should be."""
+
+    found = matcher.find_all(text)
+    return {name: apply(text, found, rules) for name, apply in CONTRACTS.items()}
 
 
 def endpoint_for(engine: str) -> str:
@@ -143,21 +152,28 @@ def main() -> int:
           f"{removals} replacing with whitespace)")
     print(f"Corpus: {args.corpus.name}, checking {len(documents)} documents\n")
 
-    expected = {doc_id: oracle_output(text, matcher, rules)
+    expected = {doc_id: oracle_outputs(text, matcher, rules)
                 for doc_id, text in documents}
-    changed = sum(1 for doc_id, text in documents if expected[doc_id] != text)
-    print(f"Oracle changes {changed} of {len(documents)} documents\n")
+    changed = sum(1 for doc_id, text in documents
+                  if expected[doc_id]["one-byte-one-match"] != text)
+    ambiguous = sum(1 for doc_id, _ in documents
+                    if len(set(expected[doc_id].values())) > 1)
+    print(f"Oracle changes {changed} of {len(documents)} documents")
+    print(f"The two contracts disagree on {ambiguous} of them "
+          f"({100 * ambiguous / len(documents):.0f}%) - documents containing "
+          f"overlapping matches\n")
 
-    any_diverged = False
+    any_unexplained = False
     for engine in engines:
         endpoint = endpoint_for(engine)
         if not endpoint:
             print(f"[{engine}] no endpoint configured; skipping")
-            any_diverged = True
+            any_unexplained = True
             continue
         token = os.environ.get(f"{engine.upper()}_TOKEN", "")
 
-        diverged: list[tuple[str, str, str]] = []
+        agree = {name: 0 for name in CONTRACTS}
+        neither: list[tuple[str, dict[str, str], str]] = []
         errors = 0
         for doc_id, text in documents:
             try:
@@ -167,29 +183,44 @@ def main() -> int:
                 if errors <= 2:
                     print(f"[{engine}] request failed for {doc_id}: {str(error)[:120]}")
                 continue
-            if actual != expected[doc_id]:
-                diverged.append((doc_id, expected[doc_id], actual))
+            matched = [n for n, want in expected[doc_id].items() if want == actual]
+            for name in matched:
+                agree[name] += 1
+            if not matched:
+                neither.append((doc_id, expected[doc_id], actual))
 
         checked = len(documents) - errors
-        verdict = "MATCHES ORACLE" if not diverged else "DIVERGES FROM ORACLE"
-        print(f"[{engine}] {checked - len(diverged)}/{checked} documents "
-              f"reproduce the oracle byte-for-byte -> {verdict}"
-              + (f"  ({errors} request errors)" if errors else ""))
+        print(f"[{engine}] {checked} documents checked"
+              + (f" ({errors} request errors)" if errors else ""))
+        for name in CONTRACTS:
+            print(f"    {name:20s} {agree[name]:5d}/{checked} "
+                  f"({100 * agree[name] / max(1, checked):5.1f}%)")
 
-        for doc_id, want, got in diverged[:args.samples]:
-            offset = first_divergence(want, got)
+        best = max(agree, key=lambda n: agree[n])
+        if agree[best] == checked:
+            print(f"    -> implements '{best}' exactly")
+        elif neither:
+            print(f"    -> {len(neither)} documents match NEITHER contract; "
+                  "that is a defect rather than a difference of semantics")
+            any_unexplained = True
+        else:
+            print(f"    -> mixed; closest is '{best}'")
+            any_unexplained = True
+
+        for doc_id, wants, got in neither[:args.samples]:
+            offset = min(first_divergence(w, got) for w in wants.values())
             start = max(0, offset - 40)
             print(f"  - {doc_id} (first difference at byte {offset})")
-            print(f"      oracle: ...{want[start:offset + 60]!r}")
-            print(f"      engine: ...{got[start:offset + 60]!r}")
-        if len(diverged) > args.samples:
-            print(f"  ... and {len(diverged) - args.samples} more")
+            for name, want in wants.items():
+                print(f"      {name:20s} ...{want[start:offset + 60]!r}")
+            print(f"      {'engine':20s} ...{got[start:offset + 60]!r}")
         print()
-        any_diverged = any_diverged or bool(diverged)
 
-    print("VERDICT: " + ("at least one engine diverges from the oracle."
-                         if any_diverged else "every engine matches the oracle."))
-    return 1 if any_diverged else 0
+    print("VERDICT: " + (
+        "at least one engine matches neither contract - investigate."
+        if any_unexplained else
+        "every engine implements one of the two contracts exactly."))
+    return 1 if any_unexplained else 0
 
 
 if __name__ == "__main__":

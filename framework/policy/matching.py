@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from collections import deque
 from dataclasses import dataclass
-from typing import Iterable, Sequence
+from typing import Iterable, Mapping, Sequence
 
 
 @dataclass(frozen=True)
@@ -121,10 +121,12 @@ def overlapping_matches(matches: Sequence[Match]) -> list[tuple[Match, Match]]:
 def resolve_non_overlapping(matches: Sequence[Match]) -> list[Match]:
     """Leftmost-longest selection of non-overlapping matches.
 
-    Used to compute expected output. Where matches do not overlap, Themis was
-    observed to produce exactly this result. Where they DO overlap, Themis
-    corrupts the output (ISSUE-004) and no expected value is correct - callers
-    should treat such documents as unusable rather than compare against them.
+    One of two transformation contracts a literal engine can implement, and the
+    one where a byte of input is consumed by at most one match. Where matches do
+    not overlap, both contracts agree and this is simply the correct answer.
+
+    See `apply_overlap_aware` for the other, and for how to tell which one an
+    engine implements.
     """
     selected: list[Match] = []
     cursor = 0
@@ -134,3 +136,62 @@ def resolve_non_overlapping(matches: Sequence[Match]) -> list[Match]:
         selected.append(match)
         cursor = match.end
     return selected
+
+
+def apply_leftmost_longest(
+    text: str, matches: Sequence[Match], replacements: Mapping[str, str]
+) -> str:
+    """Transform `text` under the one-byte-one-match contract."""
+
+    out: list[str] = []
+    cursor = 0
+    for match in resolve_non_overlapping(matches):
+        out.append(text[cursor:match.start])
+        out.append(replacements[match.literal])
+        cursor = match.end
+    out.append(text[cursor:])
+    return "".join(out)
+
+
+def apply_overlap_aware(
+    text: str, matches: Sequence[Match], replacements: Mapping[str, str]
+) -> str:
+    """Transform `text` under the every-match-fires contract.
+
+    The second contract. A match whose start has already been consumed by an
+    earlier one still fires: it emits its full replacement, and only the input
+    bytes not already consumed are taken. Matches fully contained in an earlier
+    one are dropped.
+
+    Why both exist: the two contracts agree whenever matches are disjoint, and
+    diverge whenever they share a byte. Overlaps are rare in a policy of
+    identifiers - a rule catalog can be built to exclude them, and this
+    framework's generator does - but they are unavoidable in a policy of
+    space-delimited words, where "of the" offers " of " and " the " a shared
+    space and only one of them can have it.
+
+    Worked example, rules " to ", " me " and " be " all removing:
+
+        input           "There seem to me to be two questions"
+        one-byte-one    "There seem me be two questions"
+        every-match     "There seem    two questions"
+
+    Neither is wrong in the abstract; they are different definitions of what a
+    literal replacement engine does. An engine implements one of them, and
+    validating it against the other reports failures that are not failures. Use
+    `verify-corpus.py`, which adjudicates against both and reports which one the
+    engine reproduces.
+    """
+    out: list[str] = []
+    cursor = 0
+    # Start ascending, end descending: at a shared start the longest match leads,
+    # so shorter ones sharing it fall to the contained-drop rule below.
+    for match in sorted(matches, key=lambda item: (item.start, -item.end)):
+        if match.end <= cursor:
+            continue  # wholly inside a match already applied
+        if match.start >= cursor:
+            out.append(text[cursor:match.start])
+        out.append(replacements[match.literal])
+        cursor = match.end
+    out.append(text[cursor:])
+    return "".join(out)
