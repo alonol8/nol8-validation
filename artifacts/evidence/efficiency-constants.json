@@ -1,30 +1,37 @@
 {
-  "_note": "SINGLE SOURCE OF TRUTH for efficiency constants (findings 009 item 3). Cores are MEASURED (median of 5 reps). Multiplier/ratio are NULL pending the under-load confirmation (findings 009 item 5); do not hardcode elsewhere.",
-  "cores_source_csv": "artifacts/evidence/efficiency-idle-20260726.csv (+ -under-load-20260726.csv when item 5 lands)",
-  "cores_load_state": "idle (poll-mode; under-load confirmation pending item 5)",
+  "_note": "SINGLE SOURCE OF TRUTH for efficiency constants (findings 009 item 3 / 012). Cores are MEASURED (median across 10 reps: 5 idle + 5 under-load, current config 2026-07-27). Idle and under-load AGREE -> poll-mode DEMONSTRATED, not asserted. Multiplier/ratio computed against a driver that was NOT the limiter (<=51.7% during the drive), so no longer provisional.",
+  "config_date": "2026-07-27",
+  "cores_source_csv": "artifacts/evidence/efficiency-idle-20260727.csv + efficiency-under-load-20260727.csv",
+  "cores_load_state": "idle AND under-load agree (poll-mode demonstrated). themis apollo 11.28 idle / 11.22 under-load; aergia apollo 11.26 / 11.27; aergia lexers 8.17 / 8.00. Combined 10-rep medians below.",
+  "cores_issuing_host": "sampled from the Mac (ssh to themis-demo/aergia-demo, /proc/<pid>/stat utime+stime, host-scoped); drive issued from the box (nol8-demo, c6a.8xlarge)",
   "themis": {
-    "apollo": 11.17,
+    "apollo": 11.25,
     "matching": 0.0,
-    "total": 11.17,
+    "total": 11.25,
     "box_cores": 24,
+    "box_instance": "f2.6xlarge",
     "matching_label": "FPGA (in silicon)"
   },
   "aergia": {
     "apollo": 11.27,
-    "matching": 8.17,
-    "total": 19.44,
+    "matching": 8.05,
+    "total": 19.32,
     "box_cores": 32,
-    "matching_label": "8.17 (RE2 lexers)"
+    "box_instance": "c8a.8xlarge",
+    "matching_label": "8.05 (RE2 lexers)"
   },
-  "tax_cores": 8.27,
-  "throughput_rps_source": "rulecount-2k4k6k8k-clean-20260726.csv, 8k cell medians (conc256, small)",
+  "tax_cores": 8.07,
+  "throughput_rps_source": "signature gate 2026-07-27, conc256 8k small, single-engine, driver CPU 22-24% (NOT limited). Operating point, not necessarily the engine ceiling; the concurrency push may show Themis higher, which only widens the ratio in Themis's favour.",
   "throughput_rps": {
-    "themis": 76169,
-    "aergia": 55939
+    "themis": 78220,
+    "aergia": 57622
   },
   "cores_per_1k_req": {
-    "themis": null,
-    "aergia": null
+    "themis": 0.144,
+    "aergia": 0.335
   },
-  "ratio": null
+  "ratio": 2.33,
+  "ratio_label": "Aergia burns ~2.33x the cores per delivered req/s at conc256 (cores are poll-mode, load-independent; ratio conservative for Themis)",
+  "provisional": false,
+  "provisional_note": "Came off in 012: idle==under-load (poll-mode demonstrated) and driver CPU stayed <=51.7% through the drive, so the per-request multiplier divides by a throughput from a driver that was not the limiter."
 }

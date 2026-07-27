@@ -1,0 +1,50 @@
+[
+  {
+    "mode": "sent:small",
+    "rule_count": 2000,
+    "bodies_sent": 4000,
+    "cap": 4000,
+    "avg_msg_bytes": 2398,
+    "total_matches": 44632,
+    "matches_per_request": 11.158,
+    "matches_per_kb": 4.7643,
+    "pct_requests_with_a_match": 73.8,
+    "run_dir": "20260727T145736650742Z"
+  },
+  {
+    "mode": "sent:small",
+    "rule_count": 4000,
+    "bodies_sent": 4000,
+    "cap": 4000,
+    "avg_msg_bytes": 2390,
+    "total_matches": 44976,
+    "matches_per_request": 11.244,
+    "matches_per_kb": 4.8177,
+    "pct_requests_with_a_match": 74.1,
+    "run_dir": "20260727T150911295374Z"
+  },
+  {
+    "mode": "sent:small",
+    "rule_count": 6000,
+    "bodies_sent": 4000,
+    "cap": 4000,
+    "avg_msg_bytes": 2388,
+    "total_matches": 44537,
+    "matches_per_request": 11.1342,
+    "matches_per_kb": 4.7742,
+    "pct_requests_with_a_match": 73.7,
+    "run_dir": "20260727T152057244274Z"
+  },
+  {
+    "mode": "sent:small",
+    "rule_count": 8000,
+    "bodies_sent": 4000,
+    "cap": 4000,
+    "avg_msg_bytes": 2356,
+    "total_matches": 44359,
+    "matches_per_request": 11.0898,
+    "matches_per_kb": 4.8207,
+    "pct_requests_with_a_match": 73.4,
+    "run_dir": "20260727T153254087714Z"
+  }
+]

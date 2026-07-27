@@ -1,13 +1,13 @@
 {
   "manifest_version": 1,
-  "phase": "reference",
+  "phase": "start",
   "generated_utc": {
-    "value": "2026-07-27T18:00:00Z",
+    "value": "2026-07-27T17:00:00Z",
     "provenance": "measured_now"
   },
   "run": {
-    "csv": null,
-    "basename": null
+    "csv": "artifacts/evidence/numapin-1024-2048-15s-20260727.csv",
+    "basename": "numapin-1024-2048-15s-20260727"
   },
   "issuing_host": {
     "reachable_via": "ssh nol8-demo",
@@ -42,14 +42,6 @@
       },
       "sha256": {
         "value": "120acad00f4594688a547e23e8d8ee96145ffacffd820bf918cbc3f734e68a00",
-        "provenance": "measured_now"
-      },
-      "source_commit": {
-        "value": "7aa6647",
-        "provenance": "measured_now"
-      },
-      "source_clean": {
-        "value": "clean",
         "provenance": "measured_now"
       }
     },
@@ -100,7 +92,7 @@
       },
       "core_counts_at_capture": {
         "value": {
-          "apollo": "11.28"
+          "apollo": "11.48"
         },
         "provenance": "measured_now"
       }
@@ -154,8 +146,8 @@
       },
       "core_counts_at_capture": {
         "value": {
-          "apollo": "11.27",
-          "aergia.real": "7.95"
+          "apollo": "10.40",
+          "aergia.real": "8.19"
         },
         "provenance": "measured_now"
       }
@@ -163,8 +155,8 @@
   },
   "measurement": {
     "argus_nodes": {
-      "value": null,
-      "provenance": "unknown"
+      "value": "10",
+      "provenance": "provided"
     },
     "policy": {
       "path": {
@@ -172,7 +164,7 @@
         "provenance": "unknown"
       },
       "rule_count": {
-        "value": null,
+        "value": "8000",
         "provenance": "provided"
       },
       "sha256": {
@@ -203,19 +195,19 @@
       "provenance": "provided"
     },
     "concurrency": {
-      "value": null,
+      "value": "1024,2048",
       "provenance": "provided"
     },
     "duration_s": {
-      "value": null,
+      "value": "15",
       "provenance": "provided"
     },
     "payload": {
-      "value": null,
+      "value": "small",
       "provenance": "provided"
     },
     "reps": {
-      "value": null,
+      "value": "3",
       "provenance": "provided"
     },
     "utc_start": {
@@ -226,5 +218,17 @@
       "value": null,
       "provenance": "provided"
     }
+  },
+  "drift": {
+    "prev_manifest": "artifacts/evidence/current-config.manifest.json",
+    "hardware_drift": [
+      {
+        "field": "issuing_host.dp4driver.sha256",
+        "prev": "767333f5921bb2d7a04d6a50f9e4a1d12a77f1ac662fa15cb1b819001cb60c40",
+        "now": "120acad00f4594688a547e23e8d8ee96145ffacffd820bf918cbc3f734e68a00"
+      }
+    ],
+    "run_param_changes": [],
+    "result": "HARDWARE_DRIFT"
   }
 }

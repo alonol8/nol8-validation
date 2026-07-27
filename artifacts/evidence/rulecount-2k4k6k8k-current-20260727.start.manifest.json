@@ -1,13 +1,13 @@
 {
   "manifest_version": 1,
-  "phase": "reference",
+  "phase": "start",
   "generated_utc": {
-    "value": "2026-07-27T18:00:00Z",
+    "value": "2026-07-27T15:15:00Z",
     "provenance": "measured_now"
   },
   "run": {
-    "csv": null,
-    "basename": null
+    "csv": "artifacts/evidence/rulecount-2k4k6k8k-current-20260727.csv",
+    "basename": "rulecount-2k4k6k8k-current-20260727"
   },
   "issuing_host": {
     "reachable_via": "ssh nol8-demo",
@@ -37,19 +37,11 @@
         "provenance": "measured_now"
       },
       "mtime": {
-        "value": "2026-07-27 16:09:56.221517658 +0000",
+        "value": "2026-07-27 14:34:04.131342350 +0000",
         "provenance": "measured_now"
       },
       "sha256": {
-        "value": "120acad00f4594688a547e23e8d8ee96145ffacffd820bf918cbc3f734e68a00",
-        "provenance": "measured_now"
-      },
-      "source_commit": {
-        "value": "7aa6647",
-        "provenance": "measured_now"
-      },
-      "source_clean": {
-        "value": "clean",
+        "value": "767333f5921bb2d7a04d6a50f9e4a1d12a77f1ac662fa15cb1b819001cb60c40",
         "provenance": "measured_now"
       }
     },
@@ -100,7 +92,7 @@
       },
       "core_counts_at_capture": {
         "value": {
-          "apollo": "11.28"
+          "apollo": "9.41"
         },
         "provenance": "measured_now"
       }
@@ -154,8 +146,8 @@
       },
       "core_counts_at_capture": {
         "value": {
-          "apollo": "11.27",
-          "aergia.real": "7.95"
+          "apollo": "11.26",
+          "aergia.real": "8.17"
         },
         "provenance": "measured_now"
       }
@@ -163,8 +155,8 @@
   },
   "measurement": {
     "argus_nodes": {
-      "value": null,
-      "provenance": "unknown"
+      "value": "10",
+      "provenance": "provided"
     },
     "policy": {
       "path": {
@@ -203,19 +195,19 @@
       "provenance": "provided"
     },
     "concurrency": {
-      "value": null,
+      "value": "256",
       "provenance": "provided"
     },
     "duration_s": {
-      "value": null,
+      "value": "15",
       "provenance": "provided"
     },
     "payload": {
-      "value": null,
+      "value": "small",
       "provenance": "provided"
     },
     "reps": {
-      "value": null,
+      "value": "5",
       "provenance": "provided"
     },
     "utc_start": {
@@ -226,5 +218,11 @@
       "value": null,
       "provenance": "provided"
     }
+  },
+  "drift": {
+    "prev_manifest": "artifacts/evidence/current-config.manifest.json",
+    "hardware_drift": [],
+    "run_param_changes": [],
+    "result": "clean"
   }
 }
