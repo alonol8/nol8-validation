@@ -1,0 +1,2 @@
+mode,prompts_total,prompts_redacted,prompts_masked,prompt_route_signals,prompt_block_signals,outputs_redacted,outputs_masked,output_block_signals,prompt_tokens_in,prompt_tokens_forwarded,output_tokens_raw,output_tokens_released,preprocess_ms,postprocess_ms
+aergia_api_infer,53,4,1,12,5,20,0,9,613,562,566,537,95.722,84.063
