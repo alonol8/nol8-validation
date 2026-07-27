@@ -2,7 +2,7 @@
   "manifest_version": 1,
   "phase": "reference",
   "generated_utc": {
-    "value": "2026-07-27T13:05:00Z",
+    "value": "2026-07-27T14:35:00Z",
     "provenance": "measured_now"
   },
   "run": {
@@ -37,11 +37,11 @@
         "provenance": "measured_now"
       },
       "mtime": {
-        "value": "2026-07-27 00:11:44.372509415 +0000",
+        "value": "2026-07-27 14:34:04.131342350 +0000",
         "provenance": "measured_now"
       },
       "sha256": {
-        "value": "9b53d74891461644b89cd2537e5535b8f106c68fa6a0a3675d428bd31abcc407",
+        "value": "767333f5921bb2d7a04d6a50f9e4a1d12a77f1ac662fa15cb1b819001cb60c40",
         "provenance": "measured_now"
       }
     },
@@ -92,7 +92,7 @@
       },
       "core_counts_at_capture": {
         "value": {
-          "apollo": "10.33"
+          "apollo": "11.28"
         },
         "provenance": "measured_now"
       }
@@ -146,8 +146,8 @@
       },
       "core_counts_at_capture": {
         "value": {
-          "apollo": "11.26",
-          "aergia.real": "6.82"
+          "apollo": "11.27",
+          "aergia.real": "8.17"
         },
         "provenance": "measured_now"
       }
