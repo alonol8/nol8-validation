@@ -139,6 +139,84 @@ STOPWORDS: tuple[str, ...] = (
 )
 
 
+# Substitutions that leave text a reader would call wrong, and a model reads
+# without difficulty. "The following week" becoming "the after week" is not
+# English, and it is entirely recoverable - which is the only bar that matters
+# when the next stage is an embedding pipeline rather than a person.
+#
+# This is where the volume is. The conservative table above had to survive every
+# grammatical context it might land in, and what survived that filter is the
+# formal register - "notwithstanding", "endeavour" - which is genuinely rare:
+# 0.3 matches/KB on real English. Dropping the grammaticality requirement admits
+# the common words, and the abbreviations, which is most of the saving.
+#
+# The line that does not move is meaning. A model can repair broken agreement
+# from context; it cannot recover a negation that was deleted. Nothing here
+# touches "not", "no", "never", "nor", "without" or "only".
+AGGRESSIVE_WORDS: dict[str, str] = {
+    # common words the conservative table had to reject
+    "additional": "more",
+    "concerning": "about",
+    "currently": "now",
+    "determine": "find",
+    "ensure": "confirm",
+    "establish": "set up",
+    "facilitate": "help",
+    "following": "after",
+    "however": "but",
+    "identify": "find",
+    "immediately": "now",
+    "implement": "make",
+    "indicate": "show",
+    "necessary": "needed",
+    "operational": "working",
+    "previously": "before",
+    "proceed": "go",
+    "provide": "give",
+    "provided": "gave",
+    "purchased": "bought",
+    "receive": "get",
+    "received": "got",
+    "regarding": "about",
+    "significant": "big",
+    "important": "key",
+    "available": "ready",
+    "request": "ask",
+    "requested": "asked",
+    "required": "needed",
+    "additional": "more",
+    # abbreviations a model expands without being told
+    "application": "app",
+    "applications": "apps",
+    "communication": "comms",
+    "configuration": "config",
+    "development": "dev",
+    "documentation": "docs",
+    "environment": "env",
+    "implementation": "impl",
+    "information": "info",
+    "management": "mgmt",
+    "operations": "ops",
+    "opportunity": "chance",
+    "organisation": "org",
+    "organization": "org",
+    "performance": "perf",
+    "repository": "repo",
+    "responsibility": "duty",
+    "specification": "spec",
+    "specifications": "specs",
+}
+
+AGGRESSIVE_PHRASES: dict[str, str] = {
+    "a number of": "some",
+    "as a result of": "from",
+    "as well as": "and",
+    "for the purpose of": "to",
+    "in addition to": "plus",
+    "in relation to": "about",
+    "the majority of": "most",
+}
+
 # The function words that make up the bulk of English. Removing them is
 # textbook preprocessing before embedding, and it is where the volume is: the
 # entries above are the formal register and are individually rare, while these
@@ -196,10 +274,21 @@ def reduction_rules(profile: str = "conservative") -> list[tuple[str, str]]:
 
     if profile == "aggressive":
         existing = {literal for literal, _ in pairs}
+        for phrase, replacement in AGGRESSIVE_PHRASES.items():
+            literal = f" {phrase} "
+            if literal not in existing:
+                pairs.append((literal, f" {replacement} "))
+                existing.add(literal)
+        for word, replacement in AGGRESSIVE_WORDS.items():
+            literal = f" {word} "
+            if literal not in existing:
+                pairs.append((literal, f" {replacement} "))
+                existing.add(literal)
         for word in FUNCTION_WORDS:
             literal = f" {word} "
             if literal not in existing:
                 pairs.append((literal, " "))
+                existing.add(literal)
 
     pairs.sort(key=lambda pair: (-len(pair[0]), pair[0]))
     return pairs

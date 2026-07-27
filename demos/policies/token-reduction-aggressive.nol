@@ -60,23 +60,77 @@
 " obtain " -> " get ";
 " hence " -> " so ";
 
-# --- Removed entirely (97) ---
+# --- Removed entirely (151) ---
 # Includes function words, which are where the volume is. Output is
 # no longer readable prose - this profile is for text headed to an
 # embedding pipeline, not to a person. Negations are deliberately
 # kept: dropping "not" inverts the meaning of the sentence.
 " it should be noted that " -> " ";
+" for the purpose of " -> " to ";
 " please note that " -> " ";
+" the majority of " -> " most ";
+" as a result of " -> " from ";
+" implementation " -> " impl ";
+" in addition to " -> " plus ";
+" in relation to " -> " about ";
+" responsibility " -> " duty ";
+" specifications " -> " specs ";
+" communication " -> " comms ";
+" configuration " -> " config ";
+" documentation " -> " docs ";
+" specification " -> " spec ";
+" applications " -> " apps ";
+" organisation " -> " org ";
+" organization " -> " org ";
 " particularly " -> " ";
 " specifically " -> " ";
+" a number of " -> " some ";
+" application " -> " app ";
+" development " -> " dev ";
+" environment " -> " env ";
 " essentially " -> " ";
+" immediately " -> " now ";
+" information " -> " info ";
+" operational " -> " working ";
+" opportunity " -> " chance ";
+" performance " -> " perf ";
+" significant " -> " big ";
+" additional " -> " more ";
+" as well as " -> " and ";
+" concerning " -> " about ";
+" facilitate " -> " help ";
+" management " -> " mgmt ";
+" operations " -> " ops ";
+" previously " -> " before ";
+" repository " -> " repo ";
+" available " -> " ready ";
 " basically " -> " ";
 " certainly " -> " ";
+" currently " -> " now ";
+" determine " -> " find ";
+" establish " -> " set up ";
+" following " -> " after ";
 " generally " -> " ";
+" implement " -> " make ";
+" important " -> " key ";
+" necessary " -> " needed ";
 " obviously " -> " ";
+" purchased " -> " bought ";
+" requested " -> " asked ";
 " typically " -> " ";
 " actually " -> " ";
+" identify " -> " find ";
+" indicate " -> " show ";
+" provided " -> " gave ";
+" received " -> " got ";
+" required " -> " needed ";
+" however " -> " but ";
+" proceed " -> " go ";
+" provide " -> " give ";
+" receive " -> " get ";
+" request " -> " ask ";
 " through " -> " ";
+" ensure " -> " confirm ";
 " really " -> " ";
 " should " -> " ";
 " simply " -> " ";
