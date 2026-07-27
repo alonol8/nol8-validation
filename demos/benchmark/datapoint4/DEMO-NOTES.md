@@ -73,11 +73,23 @@ full sweep decides.
 
 ## Sweep results (2026-07-24, high-concurrency focus 128-2048)
 
+> **SUPERSEDED — single-edge, pre-NUMA, do not quote these numbers.** This table
+> is a single-Argus-edge smoke; its absolutes (~29k small peak) are the edge
+> ceiling, not the engines, and several claims below were later disproven: the
+> ~135-159 MiB/s large cap is dead (both engines reach ~310-320 MiB/s on the
+> 10-edge rig), and "lower latency at every concurrency level" is false — the
+> Themis tail INVERTS above ~conc1024 (findings 014). Current figures live in
+> `artifacts/evidence/` (see its README): rule-count trend
+> `rulecount-2k4k6k8k-current-20260727.csv` (small-payload ratio ~1.31-1.39x at
+> conc256, widening with rule count), efficiency ratio 2.33x
+> (`efficiency-constants.json`), and the NUMA-pinned concurrency recovery
+> (`numapin-1024-2048-15s-20260727.csv`).
+
 50k-record / 5k-rule corpus, both engines, 30s measured per cell. Three regimes:
 
 | payload | Themis peak rps | RE2 peak rps | Themis p99 @512 | RE2 p99 @512 | verdict |
 |---|---|---|---|---|---|
-| small (2.6 KB) | **29,174** (c=512) | 17,719 | **34 ms** | 87 ms | Themis up to 1.7x, 2.5x tighter tail |
+| small (2.6 KB) | **29,174** (c=512) | 17,719 | **34 ms** | 87 ms | single-edge ratio here ~1.65x — NOT representative; current small-payload ratio is ~1.31-1.39x at conc256 (see banner) |
 | medium (34 KB) | 5,890 | 5,085 | 194 ms | 274 ms | ~parity, Themis ~15% ahead |
 | large (293 KB) | 570 (c=1024) | 486 | 1,645 ms | 1,988 ms | bandwidth-bound both; see cliff |
 

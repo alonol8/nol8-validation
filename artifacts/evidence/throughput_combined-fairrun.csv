@@ -1,3 +1,4 @@
+# SUPERSEDED (findings 015): original DP4 fair run, single-edge; superseded for absolutes (holds the disproven ~150 MB/s large-payload figure). See README.md.
 engine,concurrency,payload,records_used,avg_body_bytes,duration_s,completed,errors,rps,throughput_mib_s,p50_ms,p95_ms,p99_ms,p999_ms,min_ms,max_ms,mean_ms,tail_overflow
 themis,128,small,20000,2600,30.0,797451,29,26581.7,65.92,4.460,7.409,8.688,10.496,1.105,231.158,4.666,0
 themis,256,small,20000,2600,30.0,860862,32,28695.4,71.17,8.688,13.731,16.101,19.842,1.386,246.757,8.793,0

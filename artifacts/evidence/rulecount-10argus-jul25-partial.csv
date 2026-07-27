@@ -1,3 +1,4 @@
+# SUPERSEDED (findings 015): partial 10-edge Jul25 (2k/4k/8k). Superseded by the clean trend. See README.md.
 rule_count,rep,engine,concurrency,payload,records_used,avg_body_bytes,duration_s,completed,errors,rps,throughput_mib_s,p50_ms,p95_ms,p99_ms,p999_ms,min_ms,max_ms,mean_ms,tail_overflow
 2000,1,themis,256,small,4000,2624,15.0,1113552,48,74236.8,185.82,3.309,4.830,5.663,7.263,1.173,224.508,3.307,0
 2000,2,themis,256,small,4000,2624,15.0,1086251,75,72416.7,181.27,3.276,4.830,5.663,7.191,1.154,219.881,3.302,0
