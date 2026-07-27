@@ -1,0 +1,165 @@
+{
+  "manifest_version": 1,
+  "phase": "retrofit",
+  "generated_utc": {
+    "value": "UNKNOWN",
+    "provenance": "unknown"
+  },
+  "run": {
+    "csv": "artifacts/evidence/rulecount-2k4k6k8k-clean-20260726.csv",
+    "basename": "rulecount-2k4k6k8k-clean-20260726"
+  },
+  "issuing_host": {
+    "role": "driver_box",
+    "hostname": {
+      "value": "UNKNOWN",
+      "provenance": "unknown"
+    },
+    "instance_type": {
+      "value": "UNKNOWN \u2014 old driver box (~8 vCPU per Alon PR note), REPLACED 2026-07-27T06:44 by c6a.8xlarge",
+      "provenance": "inferred"
+    },
+    "vcpu": {
+      "value": "UNKNOWN \u2014 believed 8 (Alon PR note)",
+      "provenance": "inferred"
+    },
+    "boot_time": {
+      "value": "UNKNOWN",
+      "provenance": "unknown"
+    },
+    "dp4driver": {
+      "sha256": {
+        "value": "UNKNOWN",
+        "provenance": "unknown"
+      }
+    },
+    "go_version": {
+      "value": "UNKNOWN",
+      "provenance": "unknown"
+    }
+  },
+  "engine_hosts": {
+    "_note": {
+      "value": "Engine BOXES unchanged since before these runs (Themis f2.6xlarge up 2026-07-16; Aergia c8a.8xlarge up 2026-07-15) \u2014 instance shape inferred unchanged. Engine PROCESSES: Themis apollo current since 2026-07-25 18:38; Aergia engine RESTARTED 2026-07-27 09:36, so any run before that used a DIFFERENT Aergia process (pre-restart) \u2014 not individually verifiable here. Core pinning / hugepages at run time NOT recorded.",
+      "provenance": "inferred"
+    }
+  },
+  "measurement": {
+    "argus_nodes": {
+      "value": 10,
+      "provenance": "inferred"
+    },
+    "policy": {
+      "path": {
+        "value": "UNKNOWN",
+        "provenance": "unknown"
+      },
+      "rule_count": {
+        "value": "UNKNOWN",
+        "provenance": "unknown"
+      },
+      "sha256": {
+        "value": "UNKNOWN",
+        "provenance": "unknown"
+      },
+      "deploy_utc": {
+        "value": "UNKNOWN",
+        "provenance": "unknown"
+      }
+    },
+    "corpus": {
+      "dir": {
+        "value": "UNKNOWN",
+        "provenance": "unknown"
+      },
+      "sha256_or_size": {
+        "value": "UNKNOWN",
+        "provenance": "unknown"
+      }
+    },
+    "recovered_from_csv": {
+      "columns": [
+        "rule_count",
+        "rep",
+        "engine",
+        "concurrency",
+        "payload",
+        "records_used",
+        "avg_body_bytes",
+        "duration_s",
+        "completed",
+        "errors",
+        "rps",
+        "request_mib_s",
+        "p50_ms",
+        "p95_ms",
+        "p99_ms",
+        "p999_ms",
+        "min_ms",
+        "max_ms",
+        "mean_ms",
+        "tail_overflow",
+        "err_p50_ms",
+        "err_p99_ms",
+        "stall_seconds_total",
+        "wall_elapsed_s"
+      ],
+      "rows": 40,
+      "concurrency": [
+        "256"
+      ],
+      "payload": [
+        "small"
+      ],
+      "rule_count": [
+        "2000",
+        "4000",
+        "6000",
+        "8000"
+      ],
+      "rep": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "records_used": [
+        "4000"
+      ],
+      "duration_s": [
+        "15.0"
+      ],
+      "avg_body_bytes_range": [
+        2580.0,
+        2624.0
+      ],
+      "has_error_accounting": true,
+      "has_stall_accounting": true,
+      "has_issuing_host_column": false
+    },
+    "density_coordinate": {
+      "value": "UNKNOWN",
+      "provenance": "unknown"
+    },
+    "utc_start": {
+      "value": "UNKNOWN",
+      "provenance": "unknown"
+    },
+    "utc_end": {
+      "value": "UNKNOWN",
+      "provenance": "unknown"
+    }
+  },
+  "drift": {
+    "prev_manifest": null,
+    "changed_fields": [],
+    "result": "n/a (retrofit)"
+  },
+  "unrecoverable": [
+    "issuing host identity + dp4driver sha + go version",
+    "engine core pinning / hugepages / core counts at run time",
+    "policy sha + deploy timestamp; corpus sha; exact UTC start/end"
+  ],
+  "standing": "Absolutes describe a configuration that no longer exists (old driver box). Ratios within one run may survive; cross-run absolutes do not. Not banked."
+}
