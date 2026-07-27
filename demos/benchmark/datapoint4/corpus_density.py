@@ -148,9 +148,9 @@ def main() -> int:
         rows.append(c)
         print("  " + "  ".join(f"{k}={v}" for k, v in c.items() if k != "run_dir"))
     if args.out:
-        (REPO_ROOT / "artifacts" / "evidence" / args.out).write_text(
+        (REPO_ROOT / "artifacts" / "evidence" / "current" / "density" / args.out).write_text(
             json.dumps(rows, indent=2) + "\n", encoding="utf-8")
-        print(f"saved artifacts/evidence/{args.out}")
+        print(f"saved artifacts/evidence/current/density/{args.out}")
     return 0
 
 

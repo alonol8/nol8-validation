@@ -260,7 +260,7 @@ flag is wrong, and against Aergia it is right. See
 a known policy when you are finished:
 
 ```bash
-validate policy --file artifacts/evidence/tenant-restore-policy.nol
+validate policy --file artifacts/evidence/reference/tenant-restore-policy.nol
 ```
 
 ## Commands
@@ -337,7 +337,7 @@ with its data plane paused and un-pauses only when a policy commits, so a
 restarted host sits idle until one is deployed. Deploying any policy fixes it:
 
 ```bash
-validate policy --file artifacts/evidence/tenant-restore-policy.nol --target themis
+validate policy --file artifacts/evidence/reference/tenant-restore-policy.nol --target themis
 ```
 
 `--skip-preflight` opts out.

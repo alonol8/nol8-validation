@@ -60,7 +60,7 @@ curl -sS --insecure -X POST "$THEMIS_POLICY_ENDPOINT" \
 Then restore the real ruleset, because the call above **replaced** it:
 
 ```bash
-validate policy --file artifacts/evidence/tenant-restore-policy.nol --target themis
+validate policy --file artifacts/evidence/reference/tenant-restore-policy.nol --target themis
 ```
 
 Confirm service is back:

@@ -72,13 +72,13 @@ ENGINES = {
 }
 
 # Efficiency numbers: the SINGLE SOURCE OF TRUTH is
-# artifacts/evidence/efficiency-constants.json (cores MEASURED with repeats — see
+# artifacts/evidence/current/efficiency/efficiency-constants.json (cores MEASURED with repeats — see
 # efficiency-*-20260726.csv). Cores + throughput are loaded from there; the console
 # DERIVES cores/1k and the ratio for display so there is no hardcoded copy to drift.
 # The authoritative ratio in the JSON is null until the under-load confirmation
 # (findings 009 item 5); the derived display value is flagged provisional until then.
 def _load_efficiency():
-    c = json.loads((ROOT / "artifacts" / "evidence" / "efficiency-constants.json").read_text(encoding="utf-8"))
+    c = json.loads((ROOT / "artifacts" / "evidence" / "current" / "efficiency" / "efficiency-constants.json").read_text(encoding="utf-8"))
     eff = {}
     for e in ("themis", "aergia"):
         rps = c["throughput_rps"][e]

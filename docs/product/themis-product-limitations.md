@@ -405,7 +405,7 @@ curl -sS --insecure -X POST "$THEMIS_POLICY_ENDPOINT" \
 
 Any policy un-pauses the data plane. Restoring the specific ruleset a
 qualification ran against is a separate concern, and that is where keeping
-`artifacts/evidence/tenant-restore-policy.nol` matters - not for recovery, but
+`artifacts/evidence/reference/tenant-restore-policy.nol` matters - not for recovery, but
 for like-for-like comparability, since limitation 1 means a deployed policy
 cannot be read back.
 

@@ -104,7 +104,7 @@ def main() -> int:
                 row.update({"error": str(exc)[:160]})
             results[e].append(row)
 
-    artifact = REPO_ROOT / "artifacts" / "evidence" / f"issue-005-truncation-{stamp}.json"
+    artifact = REPO_ROOT / "artifacts" / "evidence" / "reference" / f"issue-005-truncation-{stamp}.json"
     artifact.write_text(json.dumps({
         "stamp": stamp,
         "policy_rules": rules,

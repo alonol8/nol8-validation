@@ -25,7 +25,7 @@ LOAD="idle"
 [ "${1:-}" = "--load" ] && LOAD="${2:-idle}"
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-OUT="${OUT:-$ROOT/artifacts/evidence/efficiency-${LOAD}-20260726.csv}"
+OUT="${OUT:-$ROOT/artifacts/evidence/current/efficiency/efficiency-${LOAD}-$(date -u +%Y%m%d).csv}"
 
 # Average cores for a named process over WINDOW seconds, entirely on the remote host.
 remote_cores() {

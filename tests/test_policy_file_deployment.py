@@ -143,7 +143,7 @@ class PolicyStatusOutputTests(unittest.TestCase):
                 "target": "themis",
                 "source": "run",
                 "run_id": "20260719T230452981053Z",
-                "policy_path": "artifacts/evidence/tenant-restore-policy.nol",
+                "policy_path": "artifacts/evidence/reference/tenant-restore-policy.nol",
                 "policy_sha256": "0" * 64,
                 "rule_count": 5000,
             }) + "\n",

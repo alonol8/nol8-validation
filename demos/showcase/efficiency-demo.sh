@@ -10,7 +10,7 @@
 #
 #   bash demos/showcase/efficiency-demo.sh
 #
-# SOURCE OF TRUTH for cores + throughput: artifacts/evidence/efficiency-constants.json
+# SOURCE OF TRUTH for cores + throughput: artifacts/evidence/current/efficiency/efficiency-constants.json
 # (cores measured with 5 reps + spread in efficiency-idle/under-load-20260726.csv; use
 # efficiency-measure.sh to re-measure). This script is the quick live demo; the committed
 # numbers live in that JSON. Poll-mode -> idle should equal under-load (findings 009
