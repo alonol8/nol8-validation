@@ -1,0 +1,39 @@
+Corpus: input.jsonl   payload band: small
+Ladder: [16, 32, 64, 128, 256, 512]
+
+  themis   concurrency    16 ...     5,016 req/s   p99     4.9 ms     12.7 MiB/s   err 0   75,242 verified
+  aergia   concurrency    16 ...     9,034 req/s   p99     2.6 ms     22.9 MiB/s   err 0   135,506 verified
+  themis   concurrency    32 ...    10,618 req/s   p99     4.6 ms     26.9 MiB/s   err 0   159,272 verified
+  aergia   concurrency    32 ...    22,294 req/s   p99     2.4 ms     56.5 MiB/s   err 0   334,406 verified
+  themis   concurrency    64 ...    21,932 req/s   p99     4.4 ms     55.6 MiB/s   err 0   328,979 verified
+  aergia   concurrency    64 ...    37,106 req/s   p99     2.9 ms     94.1 MiB/s   err 0   556,588 verified
+  themis   concurrency   128 ...    42,229 req/s   p99     4.9 ms    107.1 MiB/s   err 0   633,437 verified
+  aergia   concurrency   128 ...    47,149 req/s   p99     4.6 ms    119.6 MiB/s   err 0   707,234 verified
+  themis   concurrency   256 ...    74,060 req/s   p99     6.5 ms    187.8 MiB/s   err 0   1,110,896 verified
+  aergia   concurrency   256 ...    55,511 req/s   p99     8.0 ms    140.8 MiB/s   err 5   832,671 verified
+  themis   concurrency   512 ...   110,708 req/s   p99    10.3 ms    280.8 MiB/s   err 14   !! 3 WRONG of 1,660,625
+  aergia   concurrency   512 ...    62,922 req/s   p99    14.9 ms    159.6 MiB/s   err 3   !! 1 WRONG of 943,828
+
+Verification
+  themis   3 of 3,968,451 responses did not match the oracle
+  aergia   1 of 3,510,233 responses did not match the oracle
+
+Throughput inside a p99 budget  (corpus input.jsonl)
+  p99 budget            themis          aergia     ratio
+  ------------------------------------------------------
+        5 ms             WRONG           WRONG
+              themis: withheld: output did not match the oracle
+              aergia: withheld: output did not match the oracle
+       10 ms             WRONG           WRONG
+              themis: withheld: output did not match the oracle
+              aergia: withheld: output did not match the oracle
+       20 ms             WRONG           WRONG
+              themis: withheld: output did not match the oracle
+              aergia: withheld: output did not match the oracle
+       50 ms             WRONG           WRONG
+              themis: withheld: output did not match the oracle
+              aergia: withheld: output did not match the oracle
+
+Ladder written to /opt/nol8/nol8-validation/artifacts/evidence/slo-budget-8k-20260727.clean512.ladder.csv
+Latency is quoted with its load level throughout; a p99 without a
+concurrency attached is not a number anybody can act on.

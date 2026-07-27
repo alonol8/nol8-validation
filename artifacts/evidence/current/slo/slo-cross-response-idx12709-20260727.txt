@@ -1,0 +1,72 @@
+# CROSS-RESPONSE CONTAMINATION — captured example (findings 019/020)
+# OBSERVED: a response body contained bytes from a DIFFERENT record's response.
+#   record 12709 output is correct for its first 1153 bytes, then the body contains
+#   another response's content (a [CRED:PRIVKEY] token absent from 12709's input).
+# engine=themis  concurrency=2048  NUMA-pinned  corpus=20260727T183800915930Z (8000 rules, small)
+# got msglen=1787  expected msglen=1846  first divergence at byte offset 1153 (not a prefix -> not truncation)
+# RATE: ~1-3 wrong per million responses at conc>=512; ZERO below conc256 across ~8M responses/engine; BOTH engines.
+# NOT ESTABLISHED (do not attribute): which component; buffer-reuse vs response-misassociation;
+#   whether it can occur at normal load or only at saturation; same-connection vs different-connection
+#   (the driver does not record per-request connection identity — would need httptrace).
+# Client ruled out: doRequest uses io.ReadAll + full drain; Go enforces Content-Length framing, so
+#   foreign bytes in the payload were framed that way server-side, not misassembled by the harness.
+
+===== INPUT (record 12709) =====
+<enterprise_record scenario="email_message"><document_id>document-012710</document_id><scenario>email_message</scenario><generated_at>2000-01-01T00:00:00Z</generated_at><sender>morgan.reed987@example.test</sender><recipients>["jordan.carter350@example.test", "jordan.parker536@example.test"]</recipients><subject>Account review requested</subject><message_body>Please review the attached account details and confirm the requested changes.
+The support tier was confirmed as part of the quarterly review, and the outcome was recorded against the account.
+&gt; The original request listed 106484 Cedar Avenue, Charlotte NZ
+They've asked us to correct it to 449-69-1977.
+The support tier was confirmed in line with the retention policy, and the outcome was recorded against the account.
+Worth flagging to whoever owns Northstar Suite 00227.
+The billing cycle was re-checked once the earlier hold was released, and the entry was left open pending confirmation.
+We moved that workload to customer-app-4527.internal.examplz last week.
+Ticket quotes GB99DEMO000000000 without the rest of it.</message_body><signature>Regards,
+Morgan Morgan</signature><quoted_thread>On the previous business day, the requester asked for an update.
+For the file, the details we hold are 103622 Cedar Avenue, Charlotte NS.
+Can you check whether 100000001483 was ever settled?
+The export column shows 1977-07.
+The old value sk_test_enterprise_000395 should have been rotated last month.
+&gt; The original request listed 106352 Cedar Avenue, Charlotte JM
+The reference was recorded as https://portal.internal.example/cus before the field ran out.
+Statement line reads +1-704-88....
+The export column shows 4111-1111-2466-72.</quoted_thread><synthetic_padding>An audit sample was pulled once the earlier hold was released, and no furth</synthetic_padding></enterprise_record>
+
+===== EXPECTED OUTPUT (oracle) =====
+<enterprise_record scenario="email_message"><document_id>document-012710</document_id><scenario>email_message</scenario><generated_at>2000-01-01T00:00:00Z</generated_at><sender>morgan.reed987@example.test</sender><recipients>["jordan.carter350@example.test", "jordan.parker536@example.test"]</recipients><subject>Account review requested</subject><message_body>Please review the attached account details and confirm the requested changes.
+The support tier was confirmed as part of the quarterly review, and the outcome was recorded against the account.
+&gt; The original request listed 106484 Cedar Avenue, Charlotte NZ
+They've asked us to correct it to 449-69-1977.
+The support tier was confirmed in line with the retention policy, and the outcome was recorded against the account.
+Worth flagging to whoever owns Northstar Suite 00227.
+The billing cycle was re-checked once the earlier hold was released, and the entry was left open pending confirmation.
+We moved that workload to customer-app-4527.internal.examplz last week.
+Ticket quotes GB99DEMO000000000 without the rest of it.</message_body><signature>Regards,
+Morgan Morgan</signature><quoted_thread>On the previous business day, the requester asked for an update.
+For the file, the details we hold are 103622 Cedar Avenue, Charlotte NS.
+Can you check whether 100000001483 was ever settled?
+The export column shows 1977-07.
+The old value sk_test_enterprise_000395 should have been rotated last month.
+&gt; The original request listed 106352 Cedar Avenue, Charlotte JM
+The reference was recorded as https://portal.internal.example/cus before the field ran out.
+Statement line reads +1-704-88....
+The export column shows 4111-1111-2466-72.</quoted_thread><synthetic_padding>An audit sample was pulled once the earlier hold was released, and no furth</synthetic_padding></enterprise_record>
+
+===== GOT (observed response body) =====
+<enterprise_record scenario="email_message"><document_id>document-012710</document_id><scenario>email_message</scenario><generated_at>2000-01-01T00:00:00Z</generated_at><sender>morgan.reed987@example.test</sender><recipients>["jordan.carter350@example.test", "jordan.parker536@example.test"]</recipients><subject>Account review requested</subject><message_body>Please review the attached account details and confirm the requested changes.
+The support tier was confirmed as part of the quarterly review, and the outcome was recorded against the account.
+&gt; The original request listed 106484 Cedar Avenue, Charlotte NZ
+They've asked us to correct it to 449-69-1977.
+The support tier was confirmed in line with the retention policy, and the outcome was recorded against the account.
+Worth flagging to whoever owns Northstar Suite 00227.
+The billing cycle was re-checked once the earlier hold was released, and the entry was left open pending confirmation.
+We moved that workload to customer-app-4527.internal.examplz last week.
+Ticket quotes GB99DEMO000000000 without the rest of it.</message_body><signature>Regards,
+Morgan Morgan</signature><quoted_th[CRED:PRIVKEY]requester asked for an update.
+For the file, [HLT:MRN]s we hold are 103622 Cedar Avenue, Charlotte NS.
+Can[CRED:APIKEY]001483 was ever settled?
+The export column shows 1977-07.
+The old[BIZ:PROJECT]rprise_000395 shoul[CRED:BTOKEN]th.
+&gt; The original request listed 106352 Cedar Avenue, Charlotte JM
+The reference was recorded as https://portal.internal.example/cus before the field ran out.
+Statement line reads +1-704-88....
+The export column shows 4111-1111-2466-72.</quoted_thread><synthetic_padding>An audit sample was pulled once the earlier hold was released, and no furth</synthetic_padding></enterprise_record>

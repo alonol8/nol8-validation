@@ -1,0 +1,43 @@
+Corpus: input.jsonl   payload band: small
+Ladder: [16, 32, 64, 128, 256, 512, 1024, 2048]
+
+  themis   concurrency    16 ...     4,916 req/s   p99     4.9 ms     12.5 MiB/s   err 0   73,732 verified
+  aergia   concurrency    16 ...     9,111 req/s   p99     2.6 ms     23.1 MiB/s   err 0   136,661 verified
+  themis   concurrency    32 ...    10,580 req/s   p99     4.6 ms     26.8 MiB/s   err 0   158,697 verified
+  aergia   concurrency    32 ...    21,495 req/s   p99     2.4 ms     54.5 MiB/s   err 2   322,424 verified
+  themis   concurrency    64 ...    22,021 req/s   p99     4.3 ms     55.9 MiB/s   err 0   330,317 verified
+  aergia   concurrency    64 ...    36,807 req/s   p99     2.9 ms     93.4 MiB/s   err 0   552,101 verified
+  themis   concurrency   128 ...    42,212 req/s   p99     4.9 ms    107.1 MiB/s   err 0   633,186 verified
+  aergia   concurrency   128 ...    47,197 req/s   p99     4.5 ms    119.7 MiB/s   err 0   707,957 verified
+  themis   concurrency   256 ...    74,348 req/s   p99     6.5 ms    188.6 MiB/s   err 1   1,115,228 verified
+  aergia   concurrency   256 ...    54,795 req/s   p99     8.2 ms    139.0 MiB/s   err 0   821,930 verified
+  themis   concurrency   512 ...   110,494 req/s   p99    10.5 ms    280.3 MiB/s   err 1   1,657,412 verified
+  aergia   concurrency   512 ...    62,311 req/s   p99    15.2 ms    158.1 MiB/s   err 0   934,663 verified
+  themis   concurrency  1024 ...   127,592 req/s   p99    24.9 ms    323.6 MiB/s   err 14   !! 1 WRONG of 1,913,873
+  aergia   concurrency  1024 ...    69,293 req/s   p99    27.6 ms    175.8 MiB/s   err 7   !! 1 WRONG of 1,039,390
+  themis   concurrency  2048 ...   120,376 req/s   p99    84.8 ms    305.3 MiB/s   err 10   !! 1 WRONG of 1,805,635
+  aergia   concurrency  2048 ...    84,257 req/s   p99    46.7 ms    213.7 MiB/s   err 14   1,263,861 verified
+
+Verification
+  themis   2 of 7,688,080 responses did not match the oracle
+  aergia   1 of 5,778,987 responses did not match the oracle
+
+Throughput inside a p99 budget  (corpus input.jsonl)
+  p99 budget            themis          aergia     ratio
+  ------------------------------------------------------
+        5 ms             WRONG           WRONG
+              themis: withheld: output did not match the oracle
+              aergia: withheld: output did not match the oracle
+       10 ms             WRONG           WRONG
+              themis: withheld: output did not match the oracle
+              aergia: withheld: output did not match the oracle
+       20 ms             WRONG           WRONG
+              themis: withheld: output did not match the oracle
+              aergia: withheld: output did not match the oracle
+       50 ms             WRONG           WRONG
+              themis: withheld: output did not match the oracle
+              aergia: withheld: output did not match the oracle
+
+Ladder written to /opt/nol8/nol8-validation/artifacts/evidence/slo-budget-8k-20260727.ladder.csv
+Latency is quoted with its load level throughout; a p99 without a
+concurrency attached is not a number anybody can act on.

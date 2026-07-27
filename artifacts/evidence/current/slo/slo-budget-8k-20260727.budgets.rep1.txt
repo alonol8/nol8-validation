@@ -1,0 +1,40 @@
+Corpus: input.jsonl   payload band: small
+Ladder: [16, 32, 64, 128, 256, 512, 1024, 2048]
+
+  themis   concurrency    16 ...     4,999 req/s   p99     4.8 ms     12.7 MiB/s   err 0   74,979 verified
+  aergia   concurrency    16 ...     9,548 req/s   p99     2.5 ms     24.2 MiB/s   err 0   143,218 verified
+  themis   concurrency    32 ...    10,662 req/s   p99     4.5 ms     27.0 MiB/s   err 0   159,929 verified
+  aergia   concurrency    32 ...    22,122 req/s   p99     2.4 ms     56.1 MiB/s   err 0   331,835 verified
+  themis   concurrency    64 ...    22,013 req/s   p99     4.4 ms     55.8 MiB/s   err 0   330,190 verified
+  aergia   concurrency    64 ...    36,839 req/s   p99     2.9 ms     93.4 MiB/s   err 0   552,588 verified
+  themis   concurrency   128 ...    42,088 req/s   p99     4.9 ms    106.8 MiB/s   err 3   631,312 verified
+  aergia   concurrency   128 ...    47,236 req/s   p99     4.6 ms    119.8 MiB/s   err 0   708,548 verified
+  themis   concurrency   256 ...    74,541 req/s   p99     6.4 ms    189.1 MiB/s   err 1   1,118,115 verified
+  aergia   concurrency   256 ...    55,042 req/s   p99     8.2 ms    139.6 MiB/s   err 0   825,633 verified
+  themis   concurrency   512 ...   110,232 req/s   p99    10.5 ms    279.6 MiB/s   err 9   1,653,485 verified
+  aergia   concurrency   512 ...    61,745 req/s   p99    15.3 ms    156.6 MiB/s   err 0   926,179 verified
+  themis   concurrency  1024 ...   127,891 req/s   p99    24.7 ms    324.4 MiB/s   err 20   1,918,364 verified
+  aergia   concurrency  1024 ...    69,873 req/s   p99    27.3 ms    177.2 MiB/s   err 1   1,048,099 verified
+  themis   concurrency  2048 ...   119,847 req/s   p99    84.8 ms    304.0 MiB/s   err 15   !! 1 WRONG of 1,797,707
+  aergia   concurrency  2048 ...    84,017 req/s   p99    48.6 ms    213.1 MiB/s   err 58   1,260,252 verified
+
+Verification
+  themis   1 of 7,684,081 responses did not match the oracle
+  aergia   every response matched the oracle
+
+Throughput inside a p99 budget  (corpus input.jsonl)
+  p99 budget            themis          aergia     ratio
+  ------------------------------------------------------
+        5 ms             WRONG       48,117 r/s
+              themis: withheld: output did not match the oracle
+       10 ms             WRONG       56,748 r/s
+              themis: withheld: output did not match the oracle
+       20 ms             WRONG       64,926 r/s
+              themis: withheld: output did not match the oracle
+       50 ms             WRONG       84,017 r/s
+              themis: withheld: output did not match the oracle
+              aergia: budget not binding - this is the measured peak
+
+Ladder written to /opt/nol8/nol8-validation/artifacts/evidence/slo-budget-8k-20260727.ladder.csv
+Latency is quoted with its load level throughout; a p99 without a
+concurrency attached is not a number anybody can act on.

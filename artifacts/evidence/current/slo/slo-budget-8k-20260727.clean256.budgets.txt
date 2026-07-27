@@ -1,0 +1,31 @@
+Corpus: input.jsonl   payload band: small
+Ladder: [16, 32, 64, 128, 256]
+
+  themis   concurrency    16 ...     4,906 req/s   p99     4.9 ms     12.4 MiB/s   err 0   73,593 verified
+  aergia   concurrency    16 ...     9,118 req/s   p99     2.6 ms     23.1 MiB/s   err 0   136,766 verified
+  themis   concurrency    32 ...    10,709 req/s   p99     4.5 ms     27.2 MiB/s   err 0   160,637 verified
+  aergia   concurrency    32 ...    22,404 req/s   p99     2.4 ms     56.8 MiB/s   err 0   336,056 verified
+  themis   concurrency    64 ...    22,039 req/s   p99     4.4 ms     55.9 MiB/s   err 0   330,581 verified
+  aergia   concurrency    64 ...    36,818 req/s   p99     2.9 ms     93.4 MiB/s   err 0   552,262 verified
+  themis   concurrency   128 ...    42,183 req/s   p99     4.9 ms    107.0 MiB/s   err 0   632,747 verified
+  aergia   concurrency   128 ...    47,430 req/s   p99     4.6 ms    120.3 MiB/s   err 0   711,455 verified
+  themis   concurrency   256 ...    73,953 req/s   p99     6.5 ms    187.6 MiB/s   err 3   1,109,291 verified
+  aergia   concurrency   256 ...    55,086 req/s   p99     8.1 ms    139.7 MiB/s   err 1   826,283 verified
+
+Throughput inside a p99 budget  (corpus input.jsonl)
+  p99 budget            themis          aergia     ratio
+  ------------------------------------------------------
+        5 ms         44,558 r/s       48,314 r/s     0.92x
+       10 ms         73,953 r/s       55,086 r/s     1.34x
+              themis: budget not binding - this is the measured peak
+              aergia: budget not binding - this is the measured peak
+       20 ms         73,953 r/s       55,086 r/s     1.34x
+              themis: budget not binding - this is the measured peak
+              aergia: budget not binding - this is the measured peak
+       50 ms         73,953 r/s       55,086 r/s     1.34x
+              themis: budget not binding - this is the measured peak
+              aergia: budget not binding - this is the measured peak
+
+Ladder written to /opt/nol8/nol8-validation/artifacts/evidence/slo-budget-8k-20260727.clean256.ladder.csv
+Latency is quoted with its load level throughout; a p99 without a
+concurrency attached is not a number anybody can act on.

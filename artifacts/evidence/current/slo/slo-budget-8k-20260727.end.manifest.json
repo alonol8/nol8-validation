@@ -1,0 +1,210 @@
+{
+  "manifest_version": 1,
+  "phase": "end",
+  "generated_utc": {
+    "value": null,
+    "provenance": "unknown"
+  },
+  "run": {
+    "csv": "/opt/nol8/nol8-validation/artifacts/evidence/slo-budget-8k-20260727.csv",
+    "basename": "slo-budget-8k-20260727"
+  },
+  "issuing_host": {
+    "reachable_via": "ssh nol8-demo",
+    "hostname": {
+      "value": "",
+      "provenance": "measured_now"
+    },
+    "instance_type": {
+      "value": "UNKNOWN",
+      "provenance": "measured_now"
+    },
+    "vcpu": {
+      "value": "",
+      "provenance": "measured_now"
+    },
+    "boot_time": {
+      "value": "",
+      "provenance": "measured_now"
+    },
+    "kernel": {
+      "value": "",
+      "provenance": "measured_now"
+    },
+    "dp4driver": {
+      "path": {
+        "value": "/opt/nol8/nol8-validation/demos/benchmark/datapoint4/results/dp4driver",
+        "provenance": "measured_now"
+      },
+      "mtime": {
+        "value": "",
+        "provenance": "measured_now"
+      },
+      "sha256": {
+        "value": "",
+        "provenance": "measured_now"
+      },
+      "source_commit": {
+        "value": "",
+        "provenance": "measured_now"
+      },
+      "source_clean": {
+        "value": "",
+        "provenance": "measured_now"
+      }
+    },
+    "go_version": {
+      "value": "",
+      "provenance": "measured_now"
+    }
+  },
+  "engine_hosts": {
+    "themis": {
+      "reachable_via": "ssh themis-demo",
+      "hostname": {
+        "value": "",
+        "provenance": "measured_now"
+      },
+      "instance_type": {
+        "value": "UNKNOWN",
+        "provenance": "measured_now"
+      },
+      "vcpu": {
+        "value": "",
+        "provenance": "measured_now"
+      },
+      "boot_time": {
+        "value": "",
+        "provenance": "measured_now"
+      },
+      "kernel": {
+        "value": "",
+        "provenance": "measured_now"
+      },
+      "hugepages": {
+        "value": "",
+        "provenance": "measured_now"
+      },
+      "processes": {
+        "value": [],
+        "provenance": "measured_now"
+      },
+      "core_counts_at_capture": {
+        "value": {
+          "apollo": ""
+        },
+        "provenance": "measured_now"
+      }
+    },
+    "aergia": {
+      "reachable_via": "ssh aergia-demo",
+      "hostname": {
+        "value": "",
+        "provenance": "measured_now"
+      },
+      "instance_type": {
+        "value": "UNKNOWN",
+        "provenance": "measured_now"
+      },
+      "vcpu": {
+        "value": "",
+        "provenance": "measured_now"
+      },
+      "boot_time": {
+        "value": "",
+        "provenance": "measured_now"
+      },
+      "kernel": {
+        "value": "",
+        "provenance": "measured_now"
+      },
+      "hugepages": {
+        "value": "",
+        "provenance": "measured_now"
+      },
+      "processes": {
+        "value": [],
+        "provenance": "measured_now"
+      },
+      "core_counts_at_capture": {
+        "value": {
+          "apollo": "",
+          "aergia.real": ""
+        },
+        "provenance": "measured_now"
+      }
+    }
+  },
+  "measurement": {
+    "argus_nodes": {
+      "value": "10",
+      "provenance": "provided"
+    },
+    "policy": {
+      "path": {
+        "value": "/opt/nol8/nol8-validation/artifacts/runs/20260727T183800915930Z/generated/scale-policy.nol",
+        "provenance": "provided"
+      },
+      "rule_count": {
+        "value": "8000",
+        "provenance": "provided"
+      },
+      "sha256": {
+        "value": "933eb5892e8bca760fa170565d79e576a3f677d66397b88307273db6319937d5",
+        "provenance": "measured_now"
+      },
+      "deploy_utc": {
+        "value": null,
+        "provenance": "provided"
+      }
+    },
+    "corpus": {
+      "dir": {
+        "value": "/opt/nol8/nol8-validation/artifacts/runs/20260727T183800915930Z/generated",
+        "provenance": "provided"
+      },
+      "records": {
+        "value": "20000",
+        "provenance": "provided"
+      },
+      "avg_body_bytes": {
+        "value": null,
+        "provenance": "provided"
+      }
+    },
+    "density_coordinate": {
+      "value": null,
+      "provenance": "provided"
+    },
+    "concurrency": {
+      "value": "16,32,64,128,256,512,1024,2048",
+      "provenance": "provided"
+    },
+    "duration_s": {
+      "value": "15",
+      "provenance": "provided"
+    },
+    "payload": {
+      "value": "small",
+      "provenance": "provided"
+    },
+    "reps": {
+      "value": "1",
+      "provenance": "provided"
+    },
+    "utc_start": {
+      "value": null,
+      "provenance": "provided"
+    },
+    "utc_end": {
+      "value": null,
+      "provenance": "provided"
+    }
+  },
+  "drift": {
+    "prev_manifest": null,
+    "hardware_drift": [],
+    "run_param_changes": [],
+    "result": "no_prior"
+  }
+}

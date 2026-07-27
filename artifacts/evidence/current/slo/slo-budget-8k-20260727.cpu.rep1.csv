@@ -1,0 +1,17 @@
+engine,concurrency,driver_overall_pct,driver_busiest_core_pct,driver_limited
+themis,16,2.1,6.5,no
+aergia,16,3.7,9.3,no
+themis,32,4.2,10.9,no
+aergia,32,7.8,18.5,no
+themis,64,7.8,17.4,no
+aergia,64,13.3,34.2,no
+themis,128,14.7,37.3,no
+aergia,128,17.5,42.4,no
+themis,256,27.8,68.3,no
+aergia,256,19.8,43.4,no
+themis,512,39.2,85.2,no
+aergia,512,23.1,49.7,no
+themis,1024,46.0,92.2,yes
+aergia,1024,27.1,57.2,no
+themis,2048,43.3,86.7,no
+aergia,2048,34.3,70.5,no
