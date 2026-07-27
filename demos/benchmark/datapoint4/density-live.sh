@@ -24,7 +24,13 @@ mkdir -p "$RESULTS"
 
 RULES="${DP4_DENSE_RULES:-8000}"
 DENSITIES="${DP4_DENSITIES:-1 6 12}"          # matches/KB; keep <=~15 so docs stay in the small band
-LITPOOLS="${DP4_LITPOOLS:-1000 $RULES}"       # diversity: few distinct rules vs the whole set
+# Diversity: the whole rule set first, because that is what traffic against a
+# large policy looks like, then a narrow pool as the comparison point.
+LITPOOLS="${DP4_LITPOOLS:-$RULES 1000}"
+# Text that nearly matches a rule and does not - values cut short by a field
+# width, masked to a prefix, or differing in the last character. Ordinary
+# content in any real corpus, and absent from a synthetic one unless asked for.
+NEAR_MISS="${DP4_NEAR_MISS_PER_KB:-6}"
 CONC="${DP4_DENSE_CONC:-256}"
 DUR="${DP4_DENSE_DURATION:-15}"
 WARM="${DP4_DENSE_WARMUP:-5}"
@@ -56,7 +62,8 @@ for POOL in $LITPOOLS; do
     echo ">> ===== diversity(lit-pool)=${POOL}  density=${D}/KB  rules=${RULES} ====="
     IN="$RESULTS/dense_p${POOL}_d${D}.jsonl"
     python "$PACK/make-dense-corpus.py" --policy "$POLICY" --matches-per-kb "$D" \
-      --lit-pool "$POOL" --doc-bytes "$DOCB" --docs "$DOCS" --out "$IN" | sed 's/^/   /'
+      --lit-pool "$POOL" --near-miss-per-kb "$NEAR_MISS" \
+      --doc-bytes "$DOCB" --docs "$DOCS" --out "$IN" | sed 's/^/   /'
     for engine in themis aergia; do
       rm -f "$RESULTS/dn_${engine}.csv"        # never re-append a stale cell
       "$RESULTS/dp4driver" \

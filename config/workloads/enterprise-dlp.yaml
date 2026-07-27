@@ -195,6 +195,22 @@ documents:
     csv:
       weight: 10
 
+  # Identifier-shaped values that are NOT on the governed list: other customers,
+  # prior cases, hosts, contacts. In production these vastly outnumber the
+  # governed values - a policy watching 8,000 customers is deployed into traffic
+  # mentioning far more than 8,000 customers - and they are not free to process,
+  # because a scanner must read a value nearly to its end before it can rule it
+  # out. A corpus without them is unrealistically sterile: every
+  # identifier-shaped string in it is a hit.
+  #
+  # Expressed as a density, because the share of a document that looks like an
+  # identifier is a property of the document, not of how many of those happen to
+  # be watched. Omit this section entirely to disable it.
+  near_miss_distribution:
+    per_kilobyte:
+      minimum: 3
+      maximum: 10
+
   match_distribution:
     clean:
       weight: 25

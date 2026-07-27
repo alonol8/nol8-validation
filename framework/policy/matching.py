@@ -125,10 +125,8 @@ def resolve_non_overlapping(matches: Sequence[Match]) -> list[Match]:
     one where a byte of input is consumed by at most one match. Where matches do
     not overlap, both contracts agree and this is simply the correct answer.
 
-    See `apply_overlap_aware` for the other. An engine that overlaps must be
-    adjudicated against BOTH contracts (Themis reproduces every-match-fires,
-    Aergia reproduces one-byte-one-match); validating either engine against a
-    single contract reports failures that are not failures.
+    See `apply_overlap_aware` for the other, and for how to tell which one an
+    engine implements.
     """
     selected: list[Match] = []
     cursor = 0
@@ -140,16 +138,11 @@ def resolve_non_overlapping(matches: Sequence[Match]) -> list[Match]:
     return selected
 
 
-# ---------------------------------------------------------------------------
-# Two transformation contracts. PORTED from Alon's PR (framework/policy/
-# matching.py, apply_leftmost_longest / apply_overlap_aware) so the customer-
-# facing surfaces can adjudicate against both without waiting on the merge.
-# These should collapse to his versions when the PR lands; do not diverge them.
-# ---------------------------------------------------------------------------
 def apply_leftmost_longest(
     text: str, matches: Sequence[Match], replacements: Mapping[str, str]
 ) -> str:
-    """Transform `text` under the one-byte-one-match contract (Aergia's)."""
+    """Transform `text` under the one-byte-one-match contract."""
+
     out: list[str] = []
     cursor = 0
     for match in resolve_non_overlapping(matches):
@@ -163,18 +156,31 @@ def apply_leftmost_longest(
 def apply_overlap_aware(
     text: str, matches: Sequence[Match], replacements: Mapping[str, str]
 ) -> str:
-    """Transform `text` under the every-match-fires contract (Themis's).
+    """Transform `text` under the every-match-fires contract.
 
-    A match whose start has already been consumed by an earlier one still fires:
-    it emits its full replacement, and only the input bytes not already consumed
-    are taken. Matches fully contained in an earlier one are dropped.
+    The second contract. A match whose start has already been consumed by an
+    earlier one still fires: it emits its full replacement, and only the input
+    bytes not already consumed are taken. Matches fully contained in an earlier
+    one are dropped.
 
-    The two contracts agree whenever matches are disjoint and diverge whenever
-    they share a byte. Overlaps are rare in a policy of identifiers (this
-    framework's generator excludes them) but unavoidable in a policy of
-    space-delimited words, where " of " and " the " both want a shared space.
-    Neither contract is wrong in the abstract; they are different definitions of
-    what a literal replacement engine does.
+    Why both exist: the two contracts agree whenever matches are disjoint, and
+    diverge whenever they share a byte. Overlaps are rare in a policy of
+    identifiers - a rule catalog can be built to exclude them, and this
+    framework's generator does - but they are unavoidable in a policy of
+    space-delimited words, where "of the" offers " of " and " the " a shared
+    space and only one of them can have it.
+
+    Worked example, rules " to ", " me " and " be " all removing:
+
+        input           "There seem to me to be two questions"
+        one-byte-one    "There seem me be two questions"
+        every-match     "There seem    two questions"
+
+    Neither is wrong in the abstract; they are different definitions of what a
+    literal replacement engine does. An engine implements one of them, and
+    validating it against the other reports failures that are not failures. Use
+    `verify-corpus.py`, which adjudicates against both and reports which one the
+    engine reproduces.
     """
     out: list[str] = []
     cursor = 0

@@ -4,6 +4,7 @@
 |---|---|
 | **Fix something that is broken right now** | [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) |
 | **Know what we have found** - every issue, with IDs | [docs/FINDINGS.md](docs/FINDINGS.md) |
+| Understand what the generated corpora contain | [docs/CORPUS-REALISM.md](docs/CORPUS-REALISM.md) |
 | Find any other document | [docs/README.md](docs/README.md) |
 
 > **Endpoint returning 503?** Most likely the data plane is paused awaiting a
@@ -240,10 +241,20 @@ validate report  --run $RID
 Expected result: 50 of 50 requests succeed, `PASS: 50`,
 `CONTENT_MISMATCH: 0`, and a report whose banner reads `PASS`.
 
-`--replacement-max-length 15` normalises for KB-001, a documented Themis
-behaviour where replacement strings are truncated to 15 characters at runtime.
-Without it every record containing a longer replacement is reported as a
-content mismatch. See `docs/issues/internal/KNOWN_BEHAVIORS.md`.
+`--replacement-max-length 15` normalises for KB-001, where replacement strings
+longer than 15 characters are truncated at runtime.
+
+**Freshly generated catalogs do not need it.** The generator now keeps every
+replacement token inside 15 bytes, so nothing is truncated and the flag would
+only discard correct output. It is still required for an older policy carrying
+longer tokens.
+
+KB-001 was also **re-attributed on 2026-07-27**: measured on identical policy
+and corpus, Themis returns tokens intact and Aergia truncates them, because the
+Aergia rule record has a fixed 15-byte replacement field. So against Themis the
+flag is wrong, and against Aergia it is right. See
+`docs/issues/internal/KNOWN_BEHAVIORS.md` and
+`docs/issues/internal/ENGINE-SEMANTICS.md`.
 
 **`validate policy` replaces the entire active policy on the target.** Restore
 a known policy when you are finished:
@@ -412,10 +423,10 @@ By default, Compare validates the full replacement strings stored in
 validate compare --run <RUN_ID>
 ```
 
-The current Themis implementation has an observed limitation that truncates
-replacement strings to 15 characters (KB-001 in `docs/issues/internal/KNOWN_BEHAVIORS.md`). To
-validate current behavior explicitly, normalize expected replacement literals at
-comparison time:
+An engine may truncate replacement strings to 15 characters (KB-001 in
+`docs/issues/internal/KNOWN_BEHAVIORS.md` - measured as Aergia behaviour, not
+Themis). Generated catalogs now stay inside that budget so it does not arise; for
+an older policy with longer tokens, normalize at comparison time:
 
 ```bash
 validate compare --run <RUN_ID> --replacement-max-length 15

@@ -21,15 +21,18 @@ package main
 // same way. A warm-up phase (discarded) opens the pool and lets any RE2 warm-up
 // / GC settle before the measured steady-state phase.
 //
-// Integrity: same policy, same corpus, same driver to every engine. We do NOT
-// parse or validate the response body here (DP1-DP3 own correctness); we drain
-// it and check the status code, so the driver stays cheap enough to not become
-// the bottleneck. If it ever does, the error/overflow columns and the operator
-// notes are where that shows - do not over-read a run the driver bounded.
+// Integrity: same policy, same corpus, same driver to every engine. By default
+// the response is drained and only its status code checked, so the driver stays
+// cheap enough not to become the bottleneck. --expected turns on checking every
+// response against the oracle - see "response verification" below - at some cost
+// in driver CPU, which is why it is opt-in rather than always on. If the driver ever does
+// bound a run, the error/overflow columns and the operator notes are where that
+// shows; do not over-read a run the driver bounded.
 
 import (
 	"bufio"
 	"bytes"
+	"crypto/md5"
 	"crypto/tls"
 	"encoding/json"
 	"flag"
@@ -77,9 +80,13 @@ func buckets(capSmall, capMedium, capLarge int) []bucket {
 }
 
 type corpusBucket struct {
-	name       string
-	bodies     [][]byte // pre-marshaled {"message": ...} request bodies
-	totalBytes int64    // sum of body sizes held (for the average)
+	name   string
+	bodies [][]byte // pre-marshaled {"message": ...} request bodies
+	// Corpus line number of each body. Bodies are filtered into size buckets,
+	// so position within a bucket is not position in the file - and the
+	// expected digests are keyed by the latter.
+	indices    []int
+	totalBytes int64 // sum of body sizes held (for the average)
 }
 
 func (c *corpusBucket) avgBytes() int {
@@ -110,11 +117,15 @@ func loadCorpus(path string, buckets []bucket) (map[string]*corpusBucket, error)
 
 	scanner := bufio.NewScanner(file)
 	scanner.Buffer(make([]byte, 0, 1024*1024), 8*1024*1024) // records reach ~1MB
+	corpusIndex := -1
 	for scanner.Scan() {
 		line := scanner.Bytes()
 		if len(bytes.TrimSpace(line)) == 0 {
 			continue
 		}
+		// Counted over non-blank records only, matching how expected-digests.py
+		// numbers them.
+		corpusIndex++
 		var rec inputRecord
 		if err := json.Unmarshal(line, &rec); err != nil {
 			return nil, fmt.Errorf("parse input line: %w", err)
@@ -133,6 +144,7 @@ func loadCorpus(path string, buckets []bucket) (map[string]*corpusBucket, error)
 				return nil, err
 			}
 			cb.bodies = append(cb.bodies, body)
+			cb.indices = append(cb.indices, corpusIndex)
 			cb.totalBytes += int64(len(body))
 			break
 		}
@@ -162,7 +174,148 @@ func buildClient(maxConc int, timeout time.Duration, insecure bool) *http.Client
 	return &http.Client{Transport: tr, Timeout: timeout}
 }
 
-func doRequest(client *http.Client, endpoint, token string, body []byte) error {
+// ---- response verification ----
+//
+// The driver measures how fast an engine answers, not whether the answer is
+// right: a 200 carrying corrupted output counts as a success. That gap is wide
+// enough to hide a real defect behind a good throughput number, so --expected
+// checks every response against what the oracle says it should be.
+//
+// The expensive half is done once, outside: expected-digests.py walks the
+// corpus through the oracle and writes two md5 sums per record, one per
+// transformation contract, leaving the hot loop with a hash compare.
+//
+// Two digests because the engines disagree about overlapping matches and both
+// are self-consistent - Aergia reproduces one-byte-one-match, Themis
+// every-match-fires. A response is correct if it matches either, and the driver
+// reports which, so the contract an engine implements is measured rather than
+// assumed. Where a record has no overlaps the digests are identical.
+//
+// Only the processed message is hashed. The response envelope carries a
+// per-request job id, so hashing the whole body would differ on every request
+// and report every response as wrong.
+type expectation struct {
+	oneByteOne  string
+	everyMatch  string
+}
+
+type verifier struct {
+	enabled  bool
+	expected []expectation
+
+	checked    atomic.Int64
+	matchedOne atomic.Int64 // matched one-byte-one-match where the two differ
+	matchedAll atomic.Int64 // matched every-match-fires where the two differ
+	agreed     atomic.Int64 // matched, on a record where both contracts agree
+	wrong      atomic.Int64
+	unparsable atomic.Int64
+
+	sampleMu sync.Mutex
+	sample   string
+}
+
+// processResponse is the shape the engines answer with; only the transformed
+// message is of interest here.
+type processResponse struct {
+	Result struct {
+		Message string `json:"message"`
+	} `json:"result"`
+}
+
+func newVerifier(expected []expectation) *verifier {
+	return &verifier{enabled: len(expected) > 0, expected: expected}
+}
+
+func (v *verifier) check(corpusIndex int, payload []byte) {
+	if v == nil || !v.enabled || corpusIndex < 0 || corpusIndex >= len(v.expected) {
+		return
+	}
+	want := v.expected[corpusIndex]
+	if want.oneByteOne == "" && want.everyMatch == "" {
+		return
+	}
+
+	var parsed processResponse
+	if err := json.Unmarshal(payload, &parsed); err != nil {
+		v.unparsable.Add(1)
+		v.note(fmt.Sprintf("record %d: response was not JSON", corpusIndex))
+		return
+	}
+	got := fmt.Sprintf("%x", md5.Sum([]byte(parsed.Result.Message)))
+	v.checked.Add(1)
+
+	switch {
+	case want.oneByteOne == want.everyMatch:
+		if got == want.oneByteOne {
+			v.agreed.Add(1)
+		} else {
+			v.wrong.Add(1)
+			v.note(fmt.Sprintf("record %d: expected %s, got %s",
+				corpusIndex, want.oneByteOne, got))
+		}
+	case got == want.oneByteOne:
+		v.matchedOne.Add(1)
+	case got == want.everyMatch:
+		v.matchedAll.Add(1)
+	default:
+		v.wrong.Add(1)
+		v.note(fmt.Sprintf("record %d: matched neither contract (%s / %s), got %s",
+			corpusIndex, want.oneByteOne, want.everyMatch, got))
+	}
+}
+
+func (v *verifier) note(message string) {
+	v.sampleMu.Lock()
+	if v.sample == "" {
+		v.sample = message
+	}
+	v.sampleMu.Unlock()
+}
+
+func (v *verifier) report() string {
+	if !v.enabled {
+		return ""
+	}
+	wrong := v.wrong.Load() + v.unparsable.Load()
+	line := fmt.Sprintf("   verified %d responses: %d correct, %d WRONG",
+		v.checked.Load(), v.agreed.Load()+v.matchedOne.Load()+v.matchedAll.Load(), wrong)
+	if one, all := v.matchedOne.Load(), v.matchedAll.Load(); one+all > 0 {
+		line += fmt.Sprintf(" (of the records where the contracts differ: "+
+			"%d one-byte-one-match, %d every-match-fires)", one, all)
+	}
+	if wrong > 0 {
+		line += "\n   !! " + v.sample
+	}
+	return line
+}
+
+// loadExpected reads the two-digest-per-record file written by
+// expected-digests.py, in corpus order.
+func loadExpected(path string) ([]expectation, error) {
+	if path == "" {
+		return nil, nil
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	var out []expectation
+	for _, line := range strings.Split(strings.TrimRight(string(raw), "\n"), "\n") {
+		fields := strings.Fields(line)
+		switch len(fields) {
+		case 0:
+			out = append(out, expectation{})
+		case 1:
+			out = append(out, expectation{fields[0], fields[0]})
+		default:
+			out = append(out, expectation{fields[0], fields[1]})
+		}
+	}
+	return out, nil
+}
+
+func doRequest(client *http.Client, endpoint, token string, body []byte,
+	corpusIndex int, v *verifier) error {
 	req, err := http.NewRequest(http.MethodPost, endpoint, bytes.NewReader(body))
 	if err != nil {
 		return err
@@ -177,9 +330,18 @@ func doRequest(client *http.Client, endpoint, token string, body []byte) error {
 	}
 	// Drain fully so the connection is returned to the pool for reuse; a
 	// half-read body forces a new TLS handshake next time and would measure
-	// the handshake, not the engine.
-	_, _ = io.Copy(io.Discard, resp.Body)
-	resp.Body.Close()
+	// the handshake, not the engine. When verifying, the same drain keeps the
+	// bytes instead of discarding them.
+	if v != nil && v.enabled {
+		payload, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+			v.check(corpusIndex, payload)
+		}
+	} else {
+		_, _ = io.Copy(io.Discard, resp.Body)
+		resp.Body.Close()
+	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("status %d", resp.StatusCode)
 	}
@@ -286,7 +448,8 @@ type phaseResult struct {
 // When measure is false (warm-up) it discards timings; the caller runs a warm-up
 // phase, then a measured phase, on the same client so connections stay warm.
 func runPhase(client *http.Client, endpoint, token string, bodies [][]byte,
-	concurrency int, dur time.Duration, measure bool, ec *errClass) phaseResult {
+	indices []int, concurrency int, dur time.Duration, measure bool,
+	ec *errClass, v *verifier) phaseResult {
 
 	phaseStart := time.Now()
 	deadline := phaseStart.Add(dur)
@@ -304,9 +467,14 @@ func runPhase(client *http.Client, endpoint, token string, bodies [][]byte,
 			defer wg.Done()
 			for time.Now().Before(deadline) {
 				i := atomic.AddUint64(&next, 1) - 1
-				body := bodies[int(i%uint64(len(bodies)))]
+				slot := int(i % uint64(len(bodies)))
+				body := bodies[slot]
+				corpusIndex := -1
+				if slot < len(indices) {
+					corpusIndex = indices[slot]
+				}
 				start := time.Now()
-				err := doRequest(client, endpoint, token, body)
+				err := doRequest(client, endpoint, token, body, corpusIndex, v)
 				lat := time.Since(start)
 				if err != nil {
 					atomic.AddInt64(&errors, 1)
@@ -345,13 +513,14 @@ func runPhase(client *http.Client, endpoint, token string, bodies [][]byte,
 }
 
 func runCell(client *http.Client, engine, endpoint, token string, cb *corpusBucket,
-	concurrency int, warmup, steady time.Duration) cellResult {
+	concurrency int, warmup, steady time.Duration, v *verifier) cellResult {
 
 	if warmup > 0 {
-		runPhase(client, endpoint, token, cb.bodies, concurrency, warmup, false, nil)
+		runPhase(client, endpoint, token, cb.bodies, cb.indices, concurrency, warmup,
+			false, nil, nil)
 	}
 	ec := &errClass{}
-	pr := runPhase(client, endpoint, token, cb.bodies, concurrency, steady, true, ec)
+	pr := runPhase(client, endpoint, token, cb.bodies, cb.indices, concurrency, steady, true, ec, v)
 
 	return cellResult{
 		Engine:       engine,
@@ -471,6 +640,10 @@ func main() {
 	durationS := flag.Int("duration", 30, "measured steady-state seconds per cell")
 	timeoutMs := flag.Int("timeout-ms", 15000, "per-request timeout")
 	insecure := flag.Bool("insecure", false, "skip TLS verification (internal certs)")
+	expectedPath := flag.String("expected", "",
+		"digest file from expected-digests.py; when given, every response is "+
+			"checked against the oracle. Costs driver CPU, so a throughput "+
+			"figure should state whether it was on")
 	output := flag.String("output", "throughput.csv", "output CSV path")
 	// Distinct bodies held per band (the fair-comparison / cache-defeat knob).
 	capSmall := flag.Int("cap-small", 20000, "distinct small bodies to hold and round-robin")
@@ -519,6 +692,17 @@ func main() {
 		fmt.Printf("  corpus %-6s: %d distinct bodies, avg %d bytes%s\n", b.name, len(cb.bodies), cb.avgBytes(), short)
 	}
 
+	expected, err := loadExpected(*expectedPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "cannot read --expected %s: %v\n", *expectedPath, err)
+		os.Exit(1)
+	}
+	v := newVerifier(expected)
+	if v.enabled {
+		fmt.Printf("   checking every response against %d expected digests "+
+			"(costs driver CPU)\n", len(expected))
+	}
+
 	client := buildClient(maxInt(concurrency), time.Duration(*timeoutMs)*time.Millisecond, *insecure)
 	warmup := time.Duration(*warmupS) * time.Second
 	steady := time.Duration(*durationS) * time.Second
@@ -537,13 +721,16 @@ func main() {
 		}
 		for _, c := range concurrency {
 			fmt.Printf(">> %s | conc=%-4d payload=%-6s (warm %ds + measure %ds) ... ", lbl, c, pName, *warmupS, *durationS)
-			r := runCell(client, lbl, endpoint, token, cb, c, warmup, steady)
+			r := runCell(client, lbl, endpoint, token, cb, c, warmup, steady, v)
 			rows = append(rows, r)
 			// Success percentiles are labelled ok- so P99 is never read as
 			// unconditional; failures are surfaced as their own p99 + total stall.
 			fmt.Printf("rps=%.0f  ok-p50=%.2fms ok-p99=%.2fms  err=%d err-p99=%.2fms stall=%.1fs\n",
 				r.rps(), ms(r.Hist.percentile(0.50)), ms(r.Hist.percentile(0.99)),
 				r.Errors, ms(r.ErrHist.percentile(0.99)), r.StallSeconds)
+			if line := v.report(); line != "" {
+				fmt.Println(line)
+			}
 			if r.Errors > 0 && r.ErrClass != nil {
 				fmt.Printf("   errbreak: %s\n", r.ErrClass.summary())
 			}

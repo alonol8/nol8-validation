@@ -24,6 +24,8 @@ from xml.etree.ElementTree import Element, SubElement, tostring
 
 import yaml
 
+from framework.workload import prose
+
 
 @dataclass(frozen=True)
 class GeneratedDocument:
@@ -680,19 +682,18 @@ def _pad_document(
         return content
 
     remaining = target_size - encoded_size
-    filler_seed = (
-        "Synthetic enterprise validation content. "
-        "This text is intentionally non-sensitive and exists only to create "
-        "the requested document size. "
-    )
 
+    # Composed per document rather than repeated from a constant: a long record
+    # is long because many separate things were written into it over time. See
+    # framework/workload/prose.py.
     chunks: list[str] = []
     filler_size = 0
     sequence = 1
 
     while filler_size < remaining:
         chunk = (
-            f"{filler_seed} sequence={sequence} "
+            f"{prose.paragraph(random_source, sentences=2)} "
+            f"sequence={sequence} "
             f"token={_token(random_source, 16)}\n"
         )
         chunks.append(chunk)

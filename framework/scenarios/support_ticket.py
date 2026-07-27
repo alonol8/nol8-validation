@@ -32,8 +32,15 @@ def build_support_ticket(
     random_source: random.Random,
     selected_rules: Sequence[SupportTicketRule],
     catalog_values: set[str],
+    near_miss_supply: Any = None,
 ) -> SupportTicketBuild:
-    """Return a coherent record and exact evidence for every placed rule."""
+    """Return a coherent record and exact evidence for every placed rule.
+
+    `near_miss_supply`, when given, is drawn on for identifier-shaped values
+    that are *not* in the catalog - linked cases, other participants in the
+    thread, hosts named while troubleshooting. A real ticket is full of them and
+    almost none of them are governed; see `framework/workload/near_miss.py`.
+    """
 
     priorities = ("low", "normal", "high", "urgent")
     subjects = (
@@ -62,7 +69,7 @@ def build_support_ticket(
         ),
         "conversation_history": [
             {
-                "timestamp": "2026-01-15T10:32:00Z",
+                "timestamp": "2100-01-15T10:32:00Z",
                 "author": "support-agent",
                 "message": "Verification details were reviewed with the customer.",
             }
@@ -108,7 +115,7 @@ def build_support_ticket(
         elif rule.pattern_id in {"person_name", "email_address", "phone_number"}:
             record["conversation_history"].append(
                 {
-                    "timestamp": "2026-01-15T10:41:00Z",
+                    "timestamp": "2100-01-15T10:41:00Z",
                     "author": "customer",
                     "message": (
                         f"Customer supplied {rule.pattern_id.replace('_', ' ')} "
@@ -127,10 +134,55 @@ def build_support_ticket(
             field_path = "internal_notes"
         placements.append(RulePlacement(rule, field_path))
 
+    _add_ticket_context(record, random_source, near_miss_supply)
+
     if not selected_rules:
         _separate_ticket_from_catalog(record, catalog_values)
 
     return SupportTicketBuild(record=record, placements=tuple(placements))
+
+
+def _add_ticket_context(
+    record: dict[str, Any],
+    random_source: random.Random,
+    supply: Any,
+) -> None:
+    """Add the references a real ticket carries that are not governed values.
+
+    Tickets are cross-referenced: a duplicate was raised, an earlier case
+    covered the same fault, another agent picked it up overnight, the failure
+    was traced to a particular host. These are ordinary content. Placing them
+    here rather than in a dedicated block keeps them mixed in with the governed
+    values, which is where they occur.
+    """
+    if supply is None:
+        return
+
+    from framework.workload.near_miss import reference_sentence
+
+    linked = [near_miss.value for near_miss in supply.take(
+        random_source.randint(0, 3), pattern_id="support_case_id"
+    )]
+    if linked:
+        record["linked_cases"] = linked
+
+    for near_miss in supply.take(random_source.randint(0, 2)):
+        record["conversation_history"].append(
+            {
+                "timestamp": "2100-01-15T11:04:00Z",
+                "author": random_source.choice(("support-agent", "customer", "reviewer")),
+                "message": reference_sentence(near_miss, random_source),
+            }
+        )
+
+    for near_miss in supply.take(random_source.randint(0, 2), pattern_id="hostname"):
+        record["security_notes"].append(reference_sentence(near_miss, random_source))
+
+    trailing = supply.take(random_source.randint(0, 2))
+    if trailing:
+        record["internal_notes"] += " " + " ".join(
+            reference_sentence(near_miss, random_source) for near_miss in trailing
+        )
 
 
 def _separate_ticket_from_catalog(

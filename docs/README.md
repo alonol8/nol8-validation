@@ -52,3 +52,10 @@ Its README explains provenance.
 
 `artifacts/runs/` is **not** tracked. Anything that matters goes to
 `artifacts/evidence/`.
+
+## Added 2026-07-27
+
+- `CORPUS-REALISM.md` - what the generated corpora contain, the match densities
+  they reach, and the two rules for anything measured on them.
+- `issues/internal/ENGINE-SEMANTICS.md` - the three places Themis and Aergia
+  return different bytes for the same policy and input, with reproductions.

@@ -63,6 +63,7 @@ demos/showcase/console/byo_work/
 .claude/settings.local.json
 docs/continue-conversation.md
 docs/issues/internal/outbound-slack-comms.md
+docs/WORKLOAD-REALISM-PROPOSAL.md
 
 # Review channel between Claude Code and the reviewer. A local working record:
 # work reports, findings, running status, and the review standard. Kept out of the
