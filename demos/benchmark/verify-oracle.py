@@ -115,8 +115,21 @@ def main() -> int:
           f"{sum(1 for v in rules.values() if v == '')} strip, "
           f"{sum(1 for v in rules.values() if v != '')} redact)")
 
-    corpus = {json.loads(l)["id"]: json.loads(l)["text"]
-              for l in args.corpus.read_text().splitlines() if l.strip()}
+    # Two corpus shapes exist in this repository: {id, text} from the DP1 data
+    # sets, and {record_id, kind, message} from the load driver and the workload
+    # generator. Accept either, so pointing this at the wrong one is not a
+    # KeyError three screens into a run.
+    corpus = {}
+    for line in args.corpus.read_text().splitlines():
+        if not line.strip():
+            continue
+        record = json.loads(line)
+        identifier = record.get("id") or record.get("record_id")
+        text = record.get("text") or record.get("message")
+        if identifier is not None and isinstance(text, str):
+            corpus[identifier] = text
+    if not corpus:
+        raise SystemExit(f"no usable records in {args.corpus}")
     expected = {cid: oracle_output(text, matcher, rules) for cid, text in corpus.items()}
     print(f"Corpus: {len(corpus)} chunks; oracle computed expected output for each.\n")
 
