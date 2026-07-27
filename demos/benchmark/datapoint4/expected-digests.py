@@ -82,9 +82,20 @@ def main() -> int:
     parser.add_argument("--policy", type=Path, required=True)
     parser.add_argument("--corpus", type=Path, required=True)
     parser.add_argument("--out", type=Path, required=True)
+    parser.add_argument(
+        "--replacement-max-length", type=int, default=None,
+        help="truncate every replacement to this many characters before "
+             "hashing. The runtime truncates at 15 (KB-001), so without this "
+             "the oracle expects a token the engine never emits and every "
+             "document carrying a match is reported wrong",
+    )
     args = parser.parse_args()
 
     rules = parse_policy(args.policy)
+    if args.replacement_max_length is not None:
+        limit = args.replacement_max_length
+        rules = {literal: value[:limit] for literal, value in rules.items()}
+        print(f"Replacements truncated to {limit} characters (KB-001)")
     matcher = LiteralMatcher(rules)
     print(f"Policy: {args.policy.name} ({len(rules)} rules)")
 

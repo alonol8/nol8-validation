@@ -140,9 +140,18 @@ def main() -> int:
                              "unnecessary and this path is one request at a time")
     parser.add_argument("--samples", type=int, default=3)
     parser.add_argument("--timeout", type=float, default=30.0)
+    parser.add_argument(
+        "--replacement-max-length", type=int, default=None,
+        help="truncate every replacement to this many characters. The runtime "
+             "truncates at 15 (KB-001); without this the oracle expects a token "
+             "the engine never emits",
+    )
     args = parser.parse_args()
 
     rules = parse_policy(args.policy)
+    if args.replacement_max_length is not None:
+        limit = args.replacement_max_length
+        rules = {literal: value[:limit] for literal, value in rules.items()}
     matcher = LiteralMatcher(rules)
     documents = load_corpus(args.corpus, args.limit)
     engines = [e.strip() for e in args.engines.split(",") if e.strip()]
