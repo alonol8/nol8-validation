@@ -217,6 +217,92 @@ AGGRESSIVE_PHRASES: dict[str, str] = {
     "the majority of": "most",
 }
 
+# Contractions. Two tokens become one and the meaning is untouched, which makes
+# these the cheapest entries in the table - and unusually valuable, because they
+# are the only safe way to shorten a negation. " do not " must not lose its
+# "not", but " don't " keeps it while saving the token.
+CONTRACTIONS: dict[str, str] = {
+    "are not": "aren't",
+    "cannot": "can't",
+    "could not": "couldn't",
+    "did not": "didn't",
+    "do not": "don't",
+    "does not": "doesn't",
+    "had not": "hadn't",
+    "has not": "hasn't",
+    "have not": "haven't",
+    "i am": "I'm",
+    "i have": "I've",
+    "i will": "I'll",
+    "is not": "isn't",
+    "it is": "it's",
+    "should not": "shouldn't",
+    "that is": "that's",
+    "there is": "there's",
+    "they are": "they're",
+    "was not": "wasn't",
+    "we are": "we're",
+    "we have": "we've",
+    "we will": "we'll",
+    "were not": "weren't",
+    "will not": "won't",
+    "would not": "wouldn't",
+    "you are": "you're",
+    "you will": "you'll",
+}
+
+# The formulae that open and close business email. They are pure courtesy: a
+# reader needs them and a retrieval index does not, and in a corpus of
+# correspondence they are both long and constant. This is the same idea as the
+# repeated-sentence stripping in the pre-index demo, generalised - that found
+# boilerplate by counting repeats in one corpus, and these are the phrases that
+# repeat in all of them.
+EMAIL_BOILERPLATE: tuple[str, ...] = (
+    "as per our conversation",
+    "at your earliest convenience",
+    "best regards",
+    "feel free to",
+    "i hope this email finds you well",
+    "kind regards",
+    "looking forward to hearing from you",
+    "please do not hesitate to contact me",
+    "please find attached",
+    "please let me know if you have any questions",
+    "thank you for your time",
+    "thanks in advance",
+    "warm regards",
+)
+
+# Standard business shorthand. A model expands these without being told, and
+# they are common enough in correspondence to be worth their place.
+ABBREVIATIONS: dict[str, str] = {
+    "account": "acct",
+    "agreement": "agmt",
+    "attachment": "attach",
+    "average": "avg",
+    "company": "co",
+    "corporation": "corp",
+    "customer": "cust",
+    "customers": "custs",
+    "department": "dept",
+    "estimate": "est",
+    "including": "incl",
+    "maximum": "max",
+    "message": "msg",
+    "minimum": "min",
+    "number": "no",
+    "quantity": "qty",
+    "quarter": "Q",
+    "received": "rcvd",
+    "reference": "ref",
+    "response": "resp",
+    "schedule": "sched",
+    "transaction": "txn",
+    "transactions": "txns",
+    "versus": "vs",
+    "without": "w/o",
+}
+
 # The function words that make up the bulk of English. Removing them is
 # textbook preprocessing before embedding, and it is where the volume is: the
 # entries above are the formal register and are individually rare, while these
@@ -274,21 +360,27 @@ def reduction_rules(profile: str = "conservative") -> list[tuple[str, str]]:
 
     if profile == "aggressive":
         existing = {literal for literal, _ in pairs}
+
+        def add(source: str, replacement: str) -> None:
+            literal = f" {source} "
+            if literal not in existing:
+                pairs.append((literal, replacement))
+                existing.add(literal)
+
+        # Longest and most specific first, so the intent is legible in the file.
+        # The engine resolves overlaps leftmost-longest whatever the order.
+        for phrase in EMAIL_BOILERPLATE:
+            add(phrase, " ")
         for phrase, replacement in AGGRESSIVE_PHRASES.items():
-            literal = f" {phrase} "
-            if literal not in existing:
-                pairs.append((literal, f" {replacement} "))
-                existing.add(literal)
+            add(phrase, f" {replacement} ")
+        for phrase, replacement in CONTRACTIONS.items():
+            add(phrase, f" {replacement} ")
         for word, replacement in AGGRESSIVE_WORDS.items():
-            literal = f" {word} "
-            if literal not in existing:
-                pairs.append((literal, f" {replacement} "))
-                existing.add(literal)
+            add(word, f" {replacement} ")
+        for word, replacement in ABBREVIATIONS.items():
+            add(word, f" {replacement} ")
         for word in FUNCTION_WORDS:
-            literal = f" {word} "
-            if literal not in existing:
-                pairs.append((literal, " "))
-                existing.add(literal)
+            add(word, " ")
 
     pairs.sort(key=lambda pair: (-len(pair[0]), pair[0]))
     return pairs
