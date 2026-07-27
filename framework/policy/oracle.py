@@ -19,10 +19,23 @@ each reimplementing a substring approximation.
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Sequence
 
-from .matching import LiteralMatcher, resolve_non_overlapping
+from .matching import (
+    LiteralMatcher,
+    apply_leftmost_longest,
+    apply_overlap_aware,
+    resolve_non_overlapping,
+)
+
+# The two correct transformation contracts (see framework.policy.matching).
+# An engine that never overlaps reproduces both; where a policy overlaps, the
+# reproduced contract identifies the engine: Themis -> every-match-fires,
+# Aergia -> one-byte-one-match. Adjudicate customer-facing output against BOTH.
+LEFTMOST_LONGEST = "leftmost_longest"   # one-byte-one-match (Aergia reproduces)
+OVERLAP_AWARE = "overlap_aware"         # every-match-fires (Themis reproduces)
 
 # "literal" -> "replacement";  (both strings may contain \" and \\ escapes)
 _RULE = re.compile(r'^"((?:[^"\\]|\\.)*)"\s*->\s*"((?:[^"\\]|\\.)*)";\s*$')
@@ -71,7 +84,13 @@ def build_matcher(rules: dict[str, str]) -> LiteralMatcher:
 
 
 def oracle_output(text: str, matcher: LiteralMatcher, rules: dict[str, str]) -> str:
-    """Correct literal-replacement output: leftmost-longest, non-overlapping."""
+    """Literal-replacement output under the LEFTMOST-LONGEST (one-byte-one-match)
+    contract. This is ONE of two correct contracts (see `adjudicate`): it is what
+    Aergia reproduces, and where a document has no overlapping matches it is also
+    what Themis reproduces. Kept for internal tooling (deploy probe, offline
+    verifiers) whose policies are overlap-free by construction, so the two
+    contracts coincide. Customer-facing adjudication must use `adjudicate`, which
+    accepts either contract."""
     selected = resolve_non_overlapping(matcher.find_all(text))
     out: list[str] = []
     cursor = 0
@@ -81,6 +100,47 @@ def oracle_output(text: str, matcher: LiteralMatcher, rules: dict[str, str]) -> 
         cursor = match.end
     out.append(text[cursor:])
     return "".join(out)
+
+
+def expected_outputs(text: str, matcher: LiteralMatcher, rules: dict[str, str]) -> dict[str, str]:
+    """Both correct contracts for `text`, keyed by contract name. Byte-identical
+    whenever the document has no overlapping matches (the common case), so this
+    costs nothing then."""
+    matches = matcher.find_all(text)
+    return {
+        LEFTMOST_LONGEST: apply_leftmost_longest(text, matches, rules),
+        OVERLAP_AWARE: apply_overlap_aware(text, matches, rules),
+    }
+
+
+@dataclass(frozen=True)
+class Adjudication:
+    """Verdict for one engine output against both contracts."""
+    correct: bool                 # matched at least one contract byte-for-byte
+    contracts: tuple[str, ...]    # which contract(s) it reproduced (both if no overlap)
+    has_overlap: bool             # the two expectations differed for this document
+    expected: dict[str, str]      # both expected outputs (for excerpting a divergence)
+
+
+def adjudicate(text: str, actual: str, matcher: LiteralMatcher, rules: dict[str, str]) -> Adjudication:
+    """Adjudicate an engine's output. Correct iff `actual` equals EITHER contract
+    byte-for-byte — this sidesteps the open engineering question of which contract
+    is specified: both every-match-fires and one-byte-one-match are accepted, and
+    the one reproduced is recorded rather than judged.
+
+    Where the document has no overlap the two contracts coincide, so `contracts`
+    holds both names and the distinction is moot. Where it overlaps, the
+    reproduced contract identifies the engine's behaviour and callers should
+    surface a run in which one engine reproduces DIFFERENT contracts across
+    documents, rather than averaging it away."""
+    exp = expected_outputs(text, matcher, rules)
+    matched = tuple(name for name, out in exp.items() if out == actual)
+    return Adjudication(
+        correct=bool(matched),
+        contracts=matched,
+        has_overlap=exp[LEFTMOST_LONGEST] != exp[OVERLAP_AWARE],
+        expected=exp,
+    )
 
 
 def substring_pass(processed: str, pairs: Sequence[tuple[str, str]]) -> bool:

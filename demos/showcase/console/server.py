@@ -38,7 +38,7 @@ sys.path.insert(0, str(ROOT))
 # independent oracle (byte-for-byte), the SAME one the CLI POC and verify-oracle
 # use — not a substring check.
 from framework.policy.oracle import (  # noqa: E402
-    build_matcher, oracle_output, parse_policy, substring_pass,
+    LEFTMOST_LONGEST, OVERLAP_AWARE, adjudicate, build_matcher, parse_policy, substring_pass,
 )
 HERE = Path(__file__).resolve().parent
 BRAND = ROOT / "demos" / "benchmark" / "brand"
@@ -517,12 +517,14 @@ def byo_correctness(engines=("themis", "aergia"), limit=12) -> dict:
                     out[(i, e)] = v
     EXCERPT = 160  # customer text: keep only enough to show a defect, never the whole doc
     rows = []
-    totals = {e: {"exact": 0, "docs": 0} for e in engines}
+    # `exact` = correct against EITHER contract (kept name for UI compatibility);
+    # the contract counters identify which one each engine reproduced on overlaps.
+    totals = {e: {"exact": 0, "docs": 0, "overlap_docs": 0,
+                  LEFTMOST_LONGEST: 0, OVERLAP_AWARE: 0} for e in engines}
     disagreements = []  # substring PASSED but oracle FAILED (the old console's blind spot)
     parity_ok = parity_total = 0
     for i in idxs:
         original = docs[i]
-        expected = oracle_output(original, matcher, rules)  # the one correct output
         substr_pairs = [(l, t) for l, t in rules.items() if l in original]
         in_scope = len(substr_pairs)
         occ = sum(original.count(l) for l, _ in substr_pairs)
@@ -534,13 +536,25 @@ def byo_correctness(engines=("themis", "aergia"), limit=12) -> dict:
                 reng[e] = {"error": (str(r)[:120] if r else "no result")}; continue
             processed = r
             outs[e] = processed
-            exact = processed == expected  # byte-for-byte: right tokens, right places, nothing else touched
+            # Accept EITHER contract byte-for-byte (Themis: every-match-fires,
+            # Aergia: one-byte-one-match). Both are correct; a single-contract
+            # check would falsely fail Themis on any overlapping policy.
+            adj = adjudicate(original, processed, matcher, rules)
             totals[e]["docs"] += 1
-            totals[e]["exact"] += 1 if exact else 0
-            if substring_pass(processed, substr_pairs) and not exact:
+            totals[e]["exact"] += 1 if adj.correct else 0
+            reproduced = ""
+            if adj.has_overlap:
+                totals[e]["overlap_docs"] += 1
+                if adj.correct:
+                    for name in adj.contracts:  # exactly one on an overlap doc — it names the engine
+                        totals[e][name] += 1
+                        reproduced = name
+            if substring_pass(processed, substr_pairs) and not adj.correct:
                 disagreements.append({"doc": i + 1, "engine": e, "label": ENGINES[e]["label"],
-                                      "oracle": expected[:EXCERPT], "engine_out": processed[:EXCERPT]})
-            reng[e] = {"exact": exact, "in_scope": in_scope}
+                                      "oracle": adj.expected[OVERLAP_AWARE][:EXCERPT],
+                                      "engine_out": processed[:EXCERPT]})
+            reng[e] = {"exact": adj.correct, "in_scope": in_scope,
+                       "has_overlap": adj.has_overlap, "reproduced": reproduced}
         if len(outs) == 2:
             parity_total += 1
             parity_ok += 1 if len(set(outs.values())) == 1 else 0
@@ -548,12 +562,16 @@ def byo_correctness(engines=("themis", "aergia"), limit=12) -> dict:
                      "density": round(occ / (mb / 1024), 1) if mb else 0.0,
                      "engines": reng,
                      "identical": len(outs) == 2 and len(set(outs.values())) == 1})
+    # Loud finding: an engine that reproduced BOTH contracts across documents.
+    mixed = {e: (totals[e][LEFTMOST_LONGEST] > 0 and totals[e][OVERLAP_AWARE] > 0) for e in engines}
     return {
         "rows": rows,
         "totals": {e: {"label": ENGINES[e]["label"], "exact": totals[e]["exact"],
-                       "docs": totals[e]["docs"]} for e in engines},
+                       "docs": totals[e]["docs"], "overlap_docs": totals[e]["overlap_docs"],
+                       "every_match": totals[e][OVERLAP_AWARE],
+                       "one_byte_one": totals[e][LEFTMOST_LONGEST]} for e in engines},
         "parity_ok": parity_ok, "parity_total": parity_total,
-        "disagreements": disagreements,
+        "disagreements": disagreements, "mixed": mixed,
         "sampled": len(idxs), "total": total,
     }
 

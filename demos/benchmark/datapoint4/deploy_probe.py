@@ -150,6 +150,15 @@ def main() -> int:
         passed, variants, detail = 0, set(), ""
         for lit, _tok in picks:
             doc = f"deploy probe: {lit} .end"
+            # oracle_output is correct here because the probe document contains
+            # exactly ONE literal by construction (the scaffold is match-free).
+            # Assert that, so if the document format ever changes and the scaffold
+            # starts matching a second literal, this fails loudly instead of
+            # silently comparing against a wrong (two-match) expected output.
+            _pm = matcher.find_all(doc)
+            assert len(_pm) == 1 and _pm[0].literal == lit, (
+                f"probe doc for {lit!r} yielded {len(_pm)} match(es) "
+                f"{[m.literal for m in _pm]!r} - the scaffold is no longer match-free")
             expected_full = oracle_output(doc, matcher, cur)
             expected_trunc = oracle_output(doc, matcher, rules_trunc)
             hit = False

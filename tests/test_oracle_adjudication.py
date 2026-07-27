@@ -13,7 +13,11 @@ import unittest
 from pathlib import Path
 
 from framework.policy.oracle import (
+    LEFTMOST_LONGEST,
+    OVERLAP_AWARE,
+    adjudicate,
     build_matcher,
+    expected_outputs,
     oracle_output,
     parse_policy,
     substring_pass,
@@ -99,6 +103,63 @@ class ParsePolicyDuplicateTests(unittest.TestCase):
     def test_distinct_literals_parse(self) -> None:
         pol = self._write('"foo" -> "[A]";\n"bar" -> "[B]";\n')
         self.assertEqual(parse_policy(pol), {"foo": "[A]", "bar": "[B]"})
+
+
+class DualContractTests(unittest.TestCase):
+    """The customer-facing fix: an engine is correct if it reproduces EITHER
+    transformation contract. On an overlapping policy the two contracts diverge,
+    and a single-contract check would falsely fail whichever engine follows the
+    other one — Themis (every-match-fires). These pin that it does not."""
+
+    # Partial overlap: "ABC" and "CDE" share the byte 'C' in "ABCDE"; neither
+    # contains the other, so `sanitize`'s old containment check could not have
+    # dropped this shape. This is the exact case the findings called out.
+    RULES = {"ABC": "[X]", "CDE": "[Y]"}
+    TEXT = "z ABCDE z"
+
+    def setUp(self) -> None:
+        self.matcher = build_matcher(self.RULES)
+        self.exp = expected_outputs(self.TEXT, self.matcher, self.RULES)
+
+    def test_contracts_diverge_on_overlap(self) -> None:
+        self.assertNotEqual(self.exp[LEFTMOST_LONGEST], self.exp[OVERLAP_AWARE])
+        self.assertEqual(self.exp[LEFTMOST_LONGEST], "z [X]DE z")   # one-byte-one-match (Aergia)
+        self.assertEqual(self.exp[OVERLAP_AWARE], "z [X][Y] z")     # every-match-fires (Themis)
+
+    def test_every_match_output_is_correct(self) -> None:
+        # Themis-style output must be accepted, and identified as overlap_aware.
+        adj = adjudicate(self.TEXT, self.exp[OVERLAP_AWARE], self.matcher, self.RULES)
+        self.assertTrue(adj.correct)
+        self.assertEqual(adj.contracts, (OVERLAP_AWARE,))
+        self.assertTrue(adj.has_overlap)
+
+    def test_one_byte_one_output_is_correct(self) -> None:
+        # Aergia-style output must be accepted, and identified as leftmost_longest.
+        adj = adjudicate(self.TEXT, self.exp[LEFTMOST_LONGEST], self.matcher, self.RULES)
+        self.assertTrue(adj.correct)
+        self.assertEqual(adj.contracts, (LEFTMOST_LONGEST,))
+
+    def test_single_contract_check_would_have_failed_themis(self) -> None:
+        # The regression this whole change exists to prevent: the old adjudicator
+        # (oracle_output == leftmost_longest) rejects a correct every-match output.
+        themis_out = self.exp[OVERLAP_AWARE]
+        self.assertNotEqual(oracle_output(self.TEXT, self.matcher, self.RULES), themis_out)  # old: FAIL
+        self.assertTrue(adjudicate(self.TEXT, themis_out, self.matcher, self.RULES).correct)  # new: pass
+
+    def test_genuinely_wrong_output_still_rejected(self) -> None:
+        adj = adjudicate(self.TEXT, "z WRONG z", self.matcher, self.RULES)
+        self.assertFalse(adj.correct)
+        self.assertEqual(adj.contracts, ())
+
+    def test_no_overlap_accepts_and_names_both(self) -> None:
+        # Where nothing overlaps the two contracts coincide: correct, both names,
+        # has_overlap False — so acceptance and counting are unchanged.
+        rules = {"foo": "[F]"}
+        m = build_matcher(rules)
+        adj = adjudicate("a foo b", "a [F] b", m, rules)
+        self.assertTrue(adj.correct)
+        self.assertEqual(set(adj.contracts), {LEFTMOST_LONGEST, OVERLAP_AWARE})
+        self.assertFalse(adj.has_overlap)
 
 
 if __name__ == "__main__":

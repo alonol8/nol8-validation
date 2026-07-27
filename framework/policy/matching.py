@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from collections import deque
 from dataclasses import dataclass
-from typing import Iterable, Sequence
+from typing import Iterable, Mapping, Sequence
 
 
 @dataclass(frozen=True)
@@ -121,10 +121,14 @@ def overlapping_matches(matches: Sequence[Match]) -> list[tuple[Match, Match]]:
 def resolve_non_overlapping(matches: Sequence[Match]) -> list[Match]:
     """Leftmost-longest selection of non-overlapping matches.
 
-    Used to compute expected output. Where matches do not overlap, Themis was
-    observed to produce exactly this result. Where they DO overlap, Themis
-    corrupts the output (ISSUE-004) and no expected value is correct - callers
-    should treat such documents as unusable rather than compare against them.
+    One of two transformation contracts a literal engine can implement, and the
+    one where a byte of input is consumed by at most one match. Where matches do
+    not overlap, both contracts agree and this is simply the correct answer.
+
+    See `apply_overlap_aware` for the other. An engine that overlaps must be
+    adjudicated against BOTH contracts (Themis reproduces every-match-fires,
+    Aergia reproduces one-byte-one-match); validating either engine against a
+    single contract reports failures that are not failures.
     """
     selected: list[Match] = []
     cursor = 0
@@ -134,3 +138,54 @@ def resolve_non_overlapping(matches: Sequence[Match]) -> list[Match]:
         selected.append(match)
         cursor = match.end
     return selected
+
+
+# ---------------------------------------------------------------------------
+# Two transformation contracts. PORTED from Alon's PR (framework/policy/
+# matching.py, apply_leftmost_longest / apply_overlap_aware) so the customer-
+# facing surfaces can adjudicate against both without waiting on the merge.
+# These should collapse to his versions when the PR lands; do not diverge them.
+# ---------------------------------------------------------------------------
+def apply_leftmost_longest(
+    text: str, matches: Sequence[Match], replacements: Mapping[str, str]
+) -> str:
+    """Transform `text` under the one-byte-one-match contract (Aergia's)."""
+    out: list[str] = []
+    cursor = 0
+    for match in resolve_non_overlapping(matches):
+        out.append(text[cursor:match.start])
+        out.append(replacements[match.literal])
+        cursor = match.end
+    out.append(text[cursor:])
+    return "".join(out)
+
+
+def apply_overlap_aware(
+    text: str, matches: Sequence[Match], replacements: Mapping[str, str]
+) -> str:
+    """Transform `text` under the every-match-fires contract (Themis's).
+
+    A match whose start has already been consumed by an earlier one still fires:
+    it emits its full replacement, and only the input bytes not already consumed
+    are taken. Matches fully contained in an earlier one are dropped.
+
+    The two contracts agree whenever matches are disjoint and diverge whenever
+    they share a byte. Overlaps are rare in a policy of identifiers (this
+    framework's generator excludes them) but unavoidable in a policy of
+    space-delimited words, where " of " and " the " both want a shared space.
+    Neither contract is wrong in the abstract; they are different definitions of
+    what a literal replacement engine does.
+    """
+    out: list[str] = []
+    cursor = 0
+    # Start ascending, end descending: at a shared start the longest match leads,
+    # so shorter ones sharing it fall to the contained-drop rule below.
+    for match in sorted(matches, key=lambda item: (item.start, -item.end)):
+        if match.end <= cursor:
+            continue  # wholly inside a match already applied
+        if match.start >= cursor:
+            out.append(text[cursor:match.start])
+        out.append(replacements[match.literal])
+        cursor = match.end
+    out.append(text[cursor:])
+    return "".join(out)
