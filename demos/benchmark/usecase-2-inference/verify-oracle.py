@@ -16,9 +16,9 @@ not two engines agreeing on the same mistake.
 
 Usage (run where the DP2 output jsonls live, e.g. EC2 results/):
 
-  python demos/benchmark/datapoint2/verify-oracle.py \
+  python demos/benchmark/usecase-2-inference/verify-oracle.py \
       --policy demos/policies/boundary.nol \
-      --results demos/benchmark/datapoint2/results \
+      --results demos/benchmark/usecase-2-inference/results \
       themis_api_infer aergia_api_infer
 """
 from __future__ import annotations
@@ -107,7 +107,7 @@ def main() -> int:
     ap.add_argument("engines", nargs="+")
     ap.add_argument("--policy", type=Path, default=REPO_ROOT / "demos/policies/boundary.nol")
     ap.add_argument("--actions", type=Path, default=REPO_ROOT / "demos/policies/boundary-actions.json")
-    ap.add_argument("--results", type=Path, default=REPO_ROOT / "demos/benchmark/datapoint2/results")
+    ap.add_argument("--results", type=Path, default=REPO_ROOT / "demos/benchmark/usecase-2-inference/results")
     ap.add_argument("--samples", type=int, default=5)
     args = ap.parse_args()
 

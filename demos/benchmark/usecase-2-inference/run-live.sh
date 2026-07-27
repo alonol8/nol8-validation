@@ -29,7 +29,7 @@ validate policy --file "$POLICY" --target aergia >/dev/null
 echo ">> waiting for Aergia reload to propagate"
 sleep 6
 
-PACK="demos/benchmark/datapoint2"
+PACK="demos/benchmark/usecase-2-inference"
 # Overridable so the same runner drives either dataset (functional-test default, or
 # the representative-policy set). See representative/README.md.
 RESULTS="${DP2_RESULTS:-$ROOT/$PACK/results}"

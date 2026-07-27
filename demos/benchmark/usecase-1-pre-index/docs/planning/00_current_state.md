@@ -90,7 +90,7 @@ The recommended next implementation task is:
 Use Case 1 remains isolated in this pack.
 
 Use Case 2 planning and future implementation now live in the sibling folder:
-- `../datapoint2_pre_post_inference_pack_v1/`
+- `../usecase-2-inference_pre_post_inference_pack_v1/`
 
 ## Recommended reading order for the next session
 

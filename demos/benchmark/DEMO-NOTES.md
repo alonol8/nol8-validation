@@ -142,7 +142,7 @@ python demos/benchmark/make-report.py         # -> demos/benchmark/pre-index-rep
 emoji. Aergia is always "Aergia (RE2 baseline)" / "Google RE2", never a NOL8
 product. Themis is "Themis (NOL8 · FPGA)".
 
-- **Kit's original report** (`datapoint1/report/report.html`, from run-live.sh) is
+- **Kit's original report** (`usecase-1-pre-index/report/report.html`, from run-live.sh) is
   the raw detailed backup only (hardcoded to old kit modes) - not for showing.
 - **Reproduce the latency numbers:** `python3 demos/benchmark/latency-decompose.py`
   on EC2 (`set -a; source .env; set +a` first).

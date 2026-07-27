@@ -37,7 +37,7 @@ else
   sleep 3
 fi
 
-PACK="demos/benchmark/datapoint3"
+PACK="demos/benchmark/usecase-3-agent-mesh"
 # Overridable so the same runner drives either dataset (functional-test default, or a
 # future representative-policy set).
 RESULTS="${DP3_RESULTS:-$ROOT/$PACK/results}"

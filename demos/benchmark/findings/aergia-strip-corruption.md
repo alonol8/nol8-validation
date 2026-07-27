@@ -26,7 +26,7 @@ rules) — exactly what a correct literal matcher must produce.
 ## Evidence
 
 Run: `demos/policies/optimization.nol` (42 governance redact rules + 10 filler
-strip rules) over `datapoint1/data/sample_chunks.jsonl` (1,000 chunks), same policy
+strip rules) over `usecase-1-pre-index/data/sample_chunks.jsonl` (1,000 chunks), same policy
 deployed to both engines.
 
 ```
@@ -78,7 +78,7 @@ MODES="nofilter re2 themis_api aergia_api" \
 
 # 2. adjudicate each engine's output against the independent oracle
 python demos/benchmark/verify-oracle.py \
-  --results demos/benchmark/datapoint1/results \
+  --results demos/benchmark/usecase-1-pre-index/results \
   themis_api aergia_api
 ```
 

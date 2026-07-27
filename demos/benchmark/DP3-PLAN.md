@@ -21,8 +21,8 @@ the lab is out of scope for the benchmark line and much bigger (frontend/backend
 
 ## The DP3 kit benchmark
 
-Kit pack: `~/Code/nol8/preindex-benchmark-kit/datapoint3_agent_mesh_pack_v1`
-(copy OUT into `demos/benchmark/datapoint3/`, non-destructive, when we start).
+Kit pack: `~/Code/nol8/preindex-benchmark-kit/usecase-3-agent-mesh_agent_mesh_pack_v1`
+(copy OUT into `demos/benchmark/usecase-3-agent-mesh/`, non-destructive, when we start).
 
 **Flow:** `User Task -> Triage -> Research -> Decision -> Action -> Final Response`.
 Governance is applied at three kinds of control point:
@@ -66,7 +66,7 @@ lists).
    extend the color map for block_handoff/block_tool). Reuse hero/stat-band/meaning/
    method/footer.
 
-4. **Oracle-verify** - generalize `datapoint2/verify-oracle.py`: framework Aho-Corasick
+4. **Oracle-verify** - generalize `usecase-2-inference/verify-oracle.py`: framework Aho-Corasick
    matcher on `mesh.nol`, applied at each stage, derive expected per-stage actions,
    compare byte-for-byte. Expect the same result shape as DP2 (Themis == Aergia ==
    oracle, since mesh.nol also redacts-to-sentinel, not strip-to-empty).
@@ -131,7 +131,7 @@ lists).
      final text, so the final stage also reports "mask" (task_0002/0003) - honest, the
      output is masked, just not the "allow" the label expected.
 
-**Build status (2026-07-23):** pack copied to `datapoint3/`; lists curated;
+**Build status (2026-07-23):** pack copied to `usecase-3-agent-mesh/`; lists curated;
 `build_mesh_policy.py` -> `mesh.nol` (17 rules, guard passes); `engine_mesh.go` +
 `main.go` dispatch written (needs EC2 to compile - no Go on Mac); `verify-oracle.py`
 (full-flow re-simulation oracle) written and its flow logic validated on Mac. TODO:

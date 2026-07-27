@@ -17,9 +17,9 @@ two engines agreeing on the same mistake.
 
 Usage (run where the DP3 event jsonls live, e.g. EC2 results/):
 
-  python demos/benchmark/datapoint3/verify-oracle.py \
+  python demos/benchmark/usecase-3-agent-mesh/verify-oracle.py \
       --policy demos/policies/mesh.nol \
-      --results demos/benchmark/datapoint3/results \
+      --results demos/benchmark/usecase-3-agent-mesh/results \
       themis_api_mesh aergia_api_mesh
 """
 from __future__ import annotations
@@ -170,9 +170,9 @@ def main() -> int:
     ap.add_argument("engines", nargs="+")
     ap.add_argument("--policy", type=Path, default=REPO_ROOT / "demos/policies/mesh.nol")
     ap.add_argument("--actions", type=Path, default=REPO_ROOT / "demos/policies/mesh-actions.json")
-    ap.add_argument("--results", type=Path, default=REPO_ROOT / "demos/benchmark/datapoint3/results")
+    ap.add_argument("--results", type=Path, default=REPO_ROOT / "demos/benchmark/usecase-3-agent-mesh/results")
     ap.add_argument("--tasks", type=Path,
-                    default=REPO_ROOT / "demos/benchmark/datapoint3/data/tasks/sample_agent_tasks.jsonl")
+                    default=REPO_ROOT / "demos/benchmark/usecase-3-agent-mesh/data/tasks/sample_agent_tasks.jsonl")
     ap.add_argument("--samples", type=int, default=5)
     args = ap.parse_args()
 

@@ -64,13 +64,13 @@ bash demos/check-engines.sh
 python demos/policies/build_boundary_policy.py   # -> boundary.nol, boundary-actions.json
 
 # 2. deploy + run nocontrol, Themis, Aergia; combine; oracle-verify both engines
-bash demos/benchmark/datapoint2/run-live.sh
+bash demos/benchmark/usecase-2-inference/run-live.sh
 
 # 3. (verify only) adjudicate the engine output against the oracle
-python demos/benchmark/datapoint2/verify-oracle.py \
+python demos/benchmark/usecase-2-inference/verify-oracle.py \
   --policy demos/policies/boundary.nol \
   --actions demos/policies/boundary-actions.json \
-  --results demos/benchmark/datapoint2/results \
+  --results demos/benchmark/usecase-2-inference/results \
   themis_api_infer aergia_api_infer
 ```
 
@@ -78,8 +78,8 @@ python demos/benchmark/datapoint2/verify-oracle.py \
 
 ```bash
 python demos/benchmark/make-report.py \
-  demos/benchmark/datapoint2/run.json \
-  demos/benchmark/datapoint2/pre-post-report.html
+  demos/benchmark/usecase-2-inference/run.json \
+  demos/benchmark/usecase-2-inference/pre-post-report.html
 ```
 
 Self-contained HTML (fonts/logos inlined), web (dark) / deck (Export to PDF, light).

@@ -68,13 +68,13 @@ bash demos/check-engines.sh
 python demos/policies/build_mesh_policy.py    # -> demos/policies/mesh.nol, mesh-actions.json
 
 # 2. deploy + run nocontrol and live Themis, combine, oracle-verify
-bash demos/benchmark/datapoint3/run-live.sh
+bash demos/benchmark/usecase-3-agent-mesh/run-live.sh
 
 # 3. (verify only) adjudicate the engine output against the oracle
-python demos/benchmark/datapoint3/verify-oracle.py \
+python demos/benchmark/usecase-3-agent-mesh/verify-oracle.py \
   --policy demos/policies/mesh.nol \
   --actions demos/policies/mesh-actions.json \
-  --results demos/benchmark/datapoint3/results \
+  --results demos/benchmark/usecase-3-agent-mesh/results \
   themis_api_mesh
 ```
 
@@ -82,8 +82,8 @@ python demos/benchmark/datapoint3/verify-oracle.py \
 
 ```bash
 python demos/benchmark/make-report.py \
-  demos/benchmark/datapoint3/run.json \
-  demos/benchmark/datapoint3/agent-mesh-report.html
+  demos/benchmark/usecase-3-agent-mesh/run.json \
+  demos/benchmark/usecase-3-agent-mesh/agent-mesh-report.html
 ```
 
 Self-contained HTML (fonts/logos inlined), web (dark) / deck (Export to PDF, light).

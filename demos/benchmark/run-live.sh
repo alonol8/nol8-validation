@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run the datapoint1 benchmark against BOTH real engines, listMatch only.
+# Run the usecase-1-pre-index benchmark against BOTH real engines, listMatch only.
 #
 # Deploys the same literal starter policy to Themis (:443) and Aergia (:444),
 # starts one adapter per engine, runs the Go harness so `themis_api` and
@@ -50,7 +50,7 @@ wait_ready 8799
 wait_ready 8800
 echo ">> adapters ready: themis=8799 aergia=8800"
 
-cd demos/benchmark/datapoint1
+cd demos/benchmark/usecase-1-pre-index
 export THEMIS_ENDPOINT="http://127.0.0.1:8799"
 export AERGIA_ENDPOINT="http://127.0.0.1:8800"
 export MODES

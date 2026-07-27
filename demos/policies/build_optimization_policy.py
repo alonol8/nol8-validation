@@ -29,7 +29,7 @@ from pathlib import Path
 import build_policy  # governance rules (same 42 known values)
 
 HERE = Path(__file__).resolve().parent
-CORPUS = HERE.parent / "benchmark" / "datapoint1" / "data" / "sample_chunks.jsonl"
+CORPUS = HERE.parent / "benchmark" / "usecase-1-pre-index" / "data" / "sample_chunks.jsonl"
 OUTPUT = HERE / "optimization.nol"
 
 

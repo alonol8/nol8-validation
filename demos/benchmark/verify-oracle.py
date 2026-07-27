@@ -21,8 +21,8 @@ Usage (run where the optimization-run output jsonls live, e.g. EC2 results/):
 
   python demos/benchmark/verify-oracle.py \
       --policy demos/policies/optimization.nol \
-      --corpus demos/benchmark/datapoint1/data/sample_chunks.jsonl \
-      --results demos/benchmark/datapoint1/results \
+      --corpus demos/benchmark/usecase-1-pre-index/data/sample_chunks.jsonl \
+      --results demos/benchmark/usecase-1-pre-index/results \
       themis_api aergia_api
 
 Each engine named on the command line reads `<results>/<engine>_output.jsonl`.
@@ -82,8 +82,8 @@ def main() -> int:
     ap.add_argument("engines", nargs="+", help="engine names, e.g. themis_api aergia_api")
     ap.add_argument("--policy", type=Path, default=REPO_ROOT / "demos/policies/optimization.nol")
     ap.add_argument("--corpus", type=Path,
-                    default=REPO_ROOT / "demos/benchmark/datapoint1/data/sample_chunks.jsonl")
-    ap.add_argument("--results", type=Path, default=REPO_ROOT / "demos/benchmark/datapoint1/results")
+                    default=REPO_ROOT / "demos/benchmark/usecase-1-pre-index/data/sample_chunks.jsonl")
+    ap.add_argument("--results", type=Path, default=REPO_ROOT / "demos/benchmark/usecase-1-pre-index/results")
     ap.add_argument("--samples", type=int, default=5, help="sample diffs to print per engine")
     args = ap.parse_args()
 

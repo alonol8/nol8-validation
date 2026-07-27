@@ -49,20 +49,20 @@ of the fuzzy problem.
 ```bash
 # 1. build the representative policy from these lists
 python demos/policies/build_boundary_policy.py \
-  --list-dir demos/benchmark/datapoint2/representative/reference_lists \
+  --list-dir demos/benchmark/usecase-2-inference/representative/reference_lists \
   --output demos/policies/boundary-representative.nol
 
 # 2. deploy it to both engines and run all modes against the representative traffic
 POLICY=demos/policies/boundary-representative.nol \
-DP2_INPUT="$PWD/demos/benchmark/datapoint2/representative/prompts/prompts.jsonl" \
-DP2_LISTS="$PWD/demos/benchmark/datapoint2/representative/reference_lists" \
-DP2_RESULTS="$PWD/demos/benchmark/datapoint2/representative/results" \
-  bash demos/benchmark/datapoint2/run-live.sh
+DP2_INPUT="$PWD/demos/benchmark/usecase-2-inference/representative/prompts/prompts.jsonl" \
+DP2_LISTS="$PWD/demos/benchmark/usecase-2-inference/representative/reference_lists" \
+DP2_RESULTS="$PWD/demos/benchmark/usecase-2-inference/representative/results" \
+  bash demos/benchmark/usecase-2-inference/run-live.sh
 
 # 3. adjudicate the engines against the oracle for THIS policy
-python demos/benchmark/datapoint2/verify-oracle.py \
+python demos/benchmark/usecase-2-inference/verify-oracle.py \
   --policy demos/policies/boundary-representative.nol \
-  --results demos/benchmark/datapoint2/representative/results \
+  --results demos/benchmark/usecase-2-inference/representative/results \
   themis_api_infer aergia_api_infer
 ```
 

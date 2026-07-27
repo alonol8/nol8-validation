@@ -46,8 +46,8 @@ port, or a policy/propagation delay. (Tunables: `RELOAD_WAIT`, `ROUNDTRIP_TRIES`
 | | Use case | Run (on EC2) | Notes |
 |---|---|---|---|
 | **DP1** | **Pre-index optimization** - clean text before it becomes embeddings | `bash demos/benchmark/run-live.sh` | [DEMO-NOTES.md](DEMO-NOTES.md) |
-| **DP2** | **Pre/post-inference boundary** - keep secrets out of the model and the response | `bash demos/benchmark/datapoint2/run-live.sh` | [datapoint2/DEMO-NOTES.md](datapoint2/DEMO-NOTES.md) |
-| **DP3** | **Agent-to-agent mesh** - strip secrets at every hop of an agent workflow | `bash demos/benchmark/datapoint3/run-live.sh` | [datapoint3/DEMO-NOTES.md](datapoint3/DEMO-NOTES.md) |
+| **DP2** | **Pre/post-inference boundary** - keep secrets out of the model and the response | `bash demos/benchmark/usecase-2-inference/run-live.sh` | [usecase-2-inference/DEMO-NOTES.md](usecase-2-inference/DEMO-NOTES.md) |
+| **DP3** | **Agent-to-agent mesh** - strip secrets at every hop of an agent workflow | `bash demos/benchmark/usecase-3-agent-mesh/run-live.sh` | [usecase-3-agent-mesh/DEMO-NOTES.md](usecase-3-agent-mesh/DEMO-NOTES.md) |
 | **DP4** | **Throughput at load** - sustained req/s + latency tail as concurrency climbs | `bash demos/benchmark/datapoint4/run-live.sh` | [datapoint4/DEMO-NOTES.md](datapoint4/DEMO-NOTES.md) |
 
 Each `run-live.sh` deploys the policy, runs the modes, prints a combined CSV, and (DP2/DP3)
@@ -69,7 +69,7 @@ min per engine for the full default sweep; dial it down with the `DP4_*` env kno
 DP2's runner includes Aergia by default. DP3 defaults to Themis-only; add Aergia with:
 
 ```bash
-MODES="nocontrol themis_api_mesh aergia_api_mesh" bash demos/benchmark/datapoint3/run-live.sh
+MODES="nocontrol themis_api_mesh aergia_api_mesh" bash demos/benchmark/usecase-3-agent-mesh/run-live.sh
 ```
 
 ### Regenerating a policy (optional - the committed `.nol` files are ready to run)
@@ -86,8 +86,8 @@ ISSUE-004). The `*-actions.json` sidecar is the action map the engine mode and o
 
 ```bash
 # render on either host (self-contained HTML: web = dark, deck = Export to PDF = light)
-python demos/benchmark/make-report.py demos/benchmark/datapoint2/run.json demos/benchmark/datapoint2/pre-post-report.html
-python demos/benchmark/make-report.py demos/benchmark/datapoint3/run.json demos/benchmark/datapoint3/agent-mesh-report.html
+python demos/benchmark/make-report.py demos/benchmark/usecase-2-inference/run.json demos/benchmark/usecase-2-inference/pre-post-report.html
+python demos/benchmark/make-report.py demos/benchmark/usecase-3-agent-mesh/run.json demos/benchmark/usecase-3-agent-mesh/agent-mesh-report.html
 ```
 
 The shared renderer dispatches on `run.json`'s `kind` (default DP1, `dp2`, `dp3`). `run.json`,
