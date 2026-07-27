@@ -81,16 +81,48 @@ _CATEGORY_ABBREVIATIONS = {
     "business_terms": "BIZ",
     "credentials": "CRED",
     "financial": "FIN",
-    "healthcare": "HEALTH",
-    "infrastructure": "INFRA",
+    "healthcare": "HLT",
+    "infrastructure": "INF",
+    "pii": "PII",
 }
 
-# Patterns whose names share a long prefix and would otherwise collide inside
-# the truncation budget - "internal_url" and "internal_product_name" both
-# reduce to "INTERNAL_" once a category prefix is applied.
+# Every pattern gets an explicit short form, because the token has to fit inside
+# the replacement budget whole rather than be cut down to it. Chosen to stay
+# readable in output a person has to skim: [PII:EMAIL] says what happened.
 _PATTERN_ABBREVIATIONS = {
-    "internal_url": "URL",
+    "access_token": "ATOKEN",
+    "api_key": "APIKEY",
+    "bank_account_number": "BANKACC",
+    "bearer_token": "BTOKEN",
+    "claim_number": "CLAIM",
+    "cloud_resource_id": "CLOUDID",
+    "connection_string": "CONNSTR",
+    "contract_number": "CONTRACT",
+    "credit_card_number": "CARD",
+    "customer_id": "CUST",
+    "database_uri": "DBURI",
+    "date_of_birth": "DOB",
+    "email_address": "EMAIL",
+    "employee_id": "EMP",
+    "hostname": "HOST",
+    "iban": "IBAN",
     "internal_product_name": "PRODUCT",
+    "internal_url": "URL",
+    "invoice_number": "INVOICE",
+    "ipv4_address": "IPV4",
+    "ipv6_address": "IPV6",
+    "medical_record_number": "MRN",
+    "member_id": "MEMBER",
+    "password": "PASSWD",
+    "patient_id": "PATIENT",
+    "person_name": "NAME",
+    "phone_number": "PHONE",
+    "private_key_marker": "PRIVKEY",
+    "project_codename": "PROJECT",
+    "routing_number": "ROUTING",
+    "social_security_number": "SSN",
+    "street_address": "ADDR",
+    "support_case_id": "CASE",
 }
 
 
@@ -98,6 +130,32 @@ def _replacement_token(category_id: str, pattern_id: str) -> str:
     category = _CATEGORY_ABBREVIATIONS.get(category_id, category_id.upper())
     pattern = _PATTERN_ABBREVIATIONS.get(pattern_id, pattern_id.upper())
     return f"[{category}:{pattern}]"
+
+
+def _assert_replacements_within_budget(rules: list[ScaleRule]) -> None:
+    """No replacement may exceed the budget, so none is ever truncated.
+
+    Comparison used to normalise for truncation after the fact
+    (`--replacement-max-length 15`). Keeping the tokens short instead removes
+    the need: the policy asks for a token the engines can actually emit, so
+    expected output is what the policy says rather than what survives a fixed
+    field, and the engines can be compared without an asterisk.
+
+    Measured on a 5,000-rule export corpus: with over-long tokens one engine
+    returned the full token and the other a 15-byte prefix, so every one of
+    674,893 responses differed. Neither was corrupting anything; they simply
+    could not both honour the policy as written.
+    """
+    over = sorted(
+        {rule.replacement for rule in rules
+         if len(rule.replacement.encode("utf-8")) > REPLACEMENT_TRUNCATION_LIMIT}
+    )
+    if over:
+        raise ValueError(
+            f"Replacement tokens exceed {REPLACEMENT_TRUNCATION_LIMIT} bytes and "
+            f"would be truncated by at least one engine, making expected output "
+            f"engine-specific: {', '.join(over)}"
+        )
 
 
 def _assert_replacements_distinct_when_truncated(rules: list[ScaleRule]) -> None:
@@ -170,6 +228,7 @@ def _rule_catalog(workload: Mapping[str, Any]) -> list[ScaleRule]:
                 replacement=replacement,
             )
         )
+    _assert_replacements_within_budget(rules)
     _assert_replacements_distinct_when_truncated(rules)
     return rules
 
