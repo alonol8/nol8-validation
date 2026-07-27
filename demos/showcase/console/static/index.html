@@ -52,6 +52,7 @@
   button.process:hover{background:var(--light-green);} button.process:disabled{opacity:.5;cursor:default;}
   button.ghost{background:var(--raise);color:var(--white);border:1px solid var(--line);}
   .err{color:var(--red);font-size:13px;margin-top:10px;}
+  .err::before{content:"[!] ";font-weight:600;}
 
   /* head to head */
   .before-pane{background:var(--panel-2);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:16px;}
@@ -81,6 +82,7 @@
     flex-wrap:wrap;align-items:center;font-size:14px;}
   .compare b{color:var(--white);} .compare .ident{color:var(--green);font-weight:600;}
   .warn{color:var(--amber);font-size:12px;margin-top:10px;}
+  .warn::before{content:"[!] ";font-weight:600;}
 
   /* efficiency */
   .bar-row{display:grid;grid-template-columns:150px 1fr auto;align-items:center;gap:14px;margin-bottom:12px;}
@@ -328,9 +330,9 @@ async function processBoth(){
       `<span><b>${faster}</b> faster by <b class="tnum">${delta} ms</b></span>`+
       `<span class="${identical?'ident':'bad'}">${identical?'✓ outputs identical':'✗ outputs differ'}</span>`;
     const warn=$('#warn'); const nm=R.themis.near||[];
-    if(nm.length){warn.hidden=false;warn.textContent=`⚠ ${nm.length} governed value(s) split across a line break — literal matching can't catch them: `+nm.map(n=>n.value).join(', ');}
+    if(nm.length){warn.hidden=false;warn.textContent=`${nm.length} governed value(s) split across a line break — literal matching can't catch them: `+nm.map(n=>n.value).join(', ');}
     else warn.hidden=true;
-  }catch(e){err.hidden=false;err.textContent='⚠ '+e.message;}
+  }catch(e){err.hidden=false;err.textContent=''+e.message;}
   finally{btn.disabled=false;btn.textContent='▶ Process on both engines';}
 }
 
@@ -367,7 +369,7 @@ async function runCorpus(){
       <table><thead><tr><th>prompt</th><th>use case</th><th>verified</th>
         <th class="num">Themis ms</th><th class="num">Aergia ms</th><th class="num">matches/KB</th></tr></thead>
         <tbody>${rows}</tbody></table></details>`;
-  }catch(e){out.innerHTML=`<div class="err">⚠ ${e.message}</div>`;}
+  }catch(e){out.innerHTML=`<div class="err">${e.message}</div>`;}
   finally{btn.disabled=false;btn.innerHTML='▶ Run corpus (<span id="catCount">'+catalog.length+'</span> prompts)';}
 }
 
@@ -398,7 +400,7 @@ async function runScale(){
         <span class="ident">✓ and at ~47% F2 CPU — the FPGA offloads ~8 matching cores (measured, flat under load)</span>
       </div>
       <div class="scope" style="margin-top:10px">${d.note}. See the DP4 brief for the medianed reference numbers.</div>`;
-  }catch(e){out.innerHTML=`<div class="err">⚠ ${e.message}</div>`;}
+  }catch(e){out.innerHTML=`<div class="err">${e.message}</div>`;}
   finally{btn.disabled=false; proc.disabled=false; proc.title=''; btn.textContent='▶ Run load test · both engines';}
 }
 
@@ -476,14 +478,14 @@ async function byoPost(path,body){
 }
 function byoBusy(btn,label){btn.disabled=true;btn._t=btn.innerHTML;btn.innerHTML='<span class="spin"></span> '+label;}
 function byoDone(btn,markDone){btn.disabled=false;if(btn._t)btn.innerHTML=btn._t;if(markDone)btn.classList.add('done');}
-function byoFail(e){const x=$('#byoErr');x.hidden=false;x.textContent='⚠ '+e.message;}
+function byoFail(e){const x=$('#byoErr');x.hidden=false;x.textContent=''+e.message;}
 
 async function byoBuild(){
   $('#byoErr').hidden=true;const btn=$('#byoBuild');byoBusy(btn,'Building…');
   try{
     const d=await byoPost('/api/byo/build',{categories:collectCats(),documents:collectDocs()});
     const chips=d.categories.map(c=>`<span class="chip"><b>${esc(c.token)}</b> ${esc(c.label)} · ${c.count}</span>`).join('');
-    const drop=d.dropped.length?`<div class="warn" style="margin-top:10px">⚠ dropped ${d.dropped.length} unsafe value(s): `+d.dropped.map(x=>esc(x.value)+' ('+esc(x.why)+')').join('; ')+'</div>':'';
+    const drop=d.dropped.length?`<div class="warn" style="margin-top:10px">dropped ${d.dropped.length} unsafe value(s): `+d.dropped.map(x=>esc(x.value)+' ('+esc(x.why)+')').join('; ')+'</div>':'';
     $('#byoBuildOut').innerHTML=`<div class="chips">${chips}</div>${drop}`+
       `<div class="scope" style="margin-top:12px">Policy: <b>${d.rule_count}</b> rules · Corpus: <b>${d.docs}</b> documents (avg ${d.avg_bytes} bytes)</div>`+
       `<div class="pre">${esc(d.policy_preview.join('\n'))}</div>`;
@@ -524,10 +526,10 @@ async function byoVerify(){
     const allok=d.totals.themis.exact===d.totals.themis.docs&&d.totals.themis.docs>0
              &&d.totals.aergia.exact===d.totals.aergia.docs&&d.totals.aergia.docs>0;
     const sampNote=(d.sampled<d.total)?`<div class="samplenote">Verified a representative <b>${d.sampled}</b> of <b>${d.total}</b> documents live, byte-for-byte (evenly sampled). The full ${d.total}-document corpus is driven in the load test below.</div>`:`<div class="samplenote">Verified <b>all ${d.total}</b> documents live, byte-for-byte against an independent oracle.</div>`;
-    const disNote=(d.disagreements&&d.disagreements.length)?`<div class="err" style="margin-top:10px">⚠ ${d.disagreements.length} result(s) would PASS a substring check but FAIL the oracle (both contracts) — e.g. doc ${d.disagreements[0].doc} on ${esc(d.disagreements[0].label)}:<br><code>expected (every-match): ${esc(d.disagreements[0].oracle)}</code><br><code>engine: ${esc(d.disagreements[0].engine_out)}</code></div>`:'';
+    const disNote=(d.disagreements&&d.disagreements.length)?`<div class="err" style="margin-top:10px">${d.disagreements.length} result(s) would PASS a substring check but FAIL the oracle (both contracts) — e.g. doc ${d.disagreements[0].doc} on ${esc(d.disagreements[0].label)}:<br><code>expected (every-match): ${esc(d.disagreements[0].oracle)}</code><br><code>engine: ${esc(d.disagreements[0].engine_out)}</code></div>`:'';
     // Loud: an engine that reproduced BOTH contracts across documents in one run.
     const mixed=d.mixed?Object.keys(d.mixed).filter(e=>d.mixed[e]):[];
-    const mixNote=mixed.length?`<div class="err" style="margin-top:10px">⚠ Inconsistent contract: ${mixed.map(e=>esc(d.totals[e].label)).join(', ')} reproduced BOTH transformation contracts across documents in this run. An engine should follow one — investigate before trusting either result.</div>`:'';
+    const mixNote=mixed.length?`<div class="err" style="margin-top:10px">Inconsistent contract: ${mixed.map(e=>esc(d.totals[e].label)).join(', ')} reproduced BOTH transformation contracts across documents in this run. An engine should follow one — investigate before trusting either result.</div>`:'';
     // Data-fidelity call for the customer: overlapping matches pass (self-consistent)
     // but mean more than one rule fired over shared text — confirm that is intended.
     const anyOverlap=d.totals&&Object.keys(d.totals).some(e=>d.totals[e].overlap_docs>0);
@@ -539,7 +541,7 @@ async function byoVerify(){
 }
 function byoEngineCard(r,fpga){
   if(!r)return '';
-  if(r.error)return `<div class="aggcard"><h4>${esc(r.label)}</h4><div class="err">⚠ ${esc(r.error)}</div></div>`;
+  if(r.error)return `<div class="aggcard"><h4>${esc(r.label)}</h4><div class="err">${esc(r.error)}</div></div>`;
   const cells=r.cells.filter(c=>c.rps>0).map(c=>`<div class="m"><div class="v ${fpga?'grn':''} tnum">${c.rps.toLocaleString()}</div><div class="k">${c.payload} req/s · p99 ${c.p99}ms · ${c.errors} err</div></div>`).join('');
   return `<div class="aggcard ${fpga?'fpga':''}"><h4>${esc(r.label)}</h4><div class="grid">${cells||'<div class="scope">no cells</div>'}</div></div>`;
 }
@@ -568,7 +570,7 @@ async function byoLoad(){
     const a=byoSmallRps(res.themis),b=byoSmallRps(res.aergia);let foot='';
     if(a&&b){const hi=Math.max(a,b),lo=Math.min(a,b),lead=a>=b?res.themis.label:res.aergia.label;
       foot+=`<div class="compare"><span class="ident">✓ ${esc(lead)} leads ${(hi/lo).toFixed(2)}× on the customer's data (${hi.toLocaleString()} vs ${lo.toLocaleString()} req/s)</span></div>`;}
-    if(ad.warn)foot+=`<div class="warn" style="margin-top:10px">⚠ ${esc(ad.warn)}</div>`;
+    if(ad.warn)foot+=`<div class="warn" style="margin-top:10px">${esc(ad.warn)}</div>`;
     $('#loadFoot').innerHTML=foot;
     setStage('Load test complete');
     const st=$('.loadstatus');if(st){st.classList.add('done');const sp=st.querySelector('.spin');if(sp)sp.remove();}
