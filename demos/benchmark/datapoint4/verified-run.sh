@@ -152,9 +152,13 @@ fi
 WRONG=0
 for E in $ENGINES; do
   echo ">> driving $E at concurrency $CONCURRENCY"
-  OUT="$RESULTS/verified_${E}.csv"
+  # The run id is in the filename: a sweep drives several corpora through this
+  # script, and a fixed name means each arm silently overwrites the last, leaving
+  # one CSV and no way to tell which arm it came from.
+  TAG="$(basename "$RUN_DIR")-c${CONCURRENCY}"
+  OUT="$RESULTS/verified_${E}_${TAG}.csv"
   rm -f "$OUT"
-  LOG="$RESULTS/verified_${E}.log"
+  LOG="$RESULTS/verified_${E}_${TAG}.log"
   "$DRIVER" --engine "$E" --label "$E" --input "$CORPUS" \
     --concurrency "$CONCURRENCY" --payloads "$PAYLOAD" \
     "--cap-$PAYLOAD" "$CAP" --warmup "$WARMUP" --duration "$DURATION" \
@@ -169,8 +173,8 @@ done
 
 echo
 FIRST="$(echo "$ENGINES" | awk '{print $1}')"
-{ head -1 "$RESULTS/verified_${FIRST}.csv"
-  for E in $ENGINES; do tail -qn +2 "$RESULTS/verified_${E}.csv"; done
+{ head -1 "$RESULTS/verified_${FIRST}_${TAG}.csv"
+  for E in $ENGINES; do tail -qn +2 "$RESULTS/verified_${E}_${TAG}.csv"; done
 } | column -s, -t
 
 if [ "$SKIP_VERIFY" = "1" ]; then
