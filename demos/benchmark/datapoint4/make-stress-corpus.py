@@ -197,6 +197,44 @@ _SEQUENTIAL_FAMILIES = (
 )
 
 
+def build_family_catalog(
+    count: int, families: int, length: int, rng: random.Random
+) -> list[tuple[str, str]]:
+    """Literals of one fixed length drawn from exactly `families` openings.
+
+    The controlled experiment. The entropy and sequential modes differ in rule
+    count, literal length and match density all at once, so a comparison between
+    them cannot say which one the cost tracks. Here rule count, length and
+    therefore density are all held constant and only the number of distinct
+    openings varies - so a sweep over `families` isolates automaton width.
+
+    A smooth curve means ordinary cache pressure. A knee means a budget being
+    exhausted, which is a different and more interesting claim.
+    """
+    alphabet = string.ascii_lowercase + string.digits
+    prefixes: list[str] = []
+    seen_prefix: set[str] = set()
+    while len(prefixes) < families:
+        candidate = "".join(rng.choice(alphabet) for _ in range(4))
+        if candidate not in seen_prefix:
+            seen_prefix.add(candidate)
+            prefixes.append(candidate)
+
+    catalog: list[tuple[str, str]] = []
+    seen: set[str] = set()
+    attempts = 0
+    while len(catalog) < count and attempts < count * 64:
+        attempts += 1
+        tail = "".join(rng.choice(alphabet) for _ in range(max(1, length - 4)))
+        value = prefixes[len(catalog) % families] + tail
+        if value in seen:
+            continue
+        seen.add(value)
+        catalog.append((value, f"[F-{len(catalog)}]"[:15]))
+    rng.shuffle(catalog)
+    return catalog
+
+
 def build_sequential_catalog(count: int) -> list[tuple[str, str]]:
     """Sequential fixed-width literals: the low-entropy control.
 
@@ -326,12 +364,19 @@ def main() -> int:
                         help="share that are two literals sharing bytes. Above "
                              "zero the engines legitimately differ (ES-1)")
     parser.add_argument(
-        "--literals", choices=("entropy", "sequential"), default="entropy",
+        "--literals", choices=("entropy", "sequential", "families"), default="entropy",
         help="entropy: random values sharing almost no prefix, so N literals "
              "become close to N trie branches. sequential: fixed-width values "
              "in a few families, collapsing into a handful of branches - the "
-             "control for isolating entropy from fragments and overlap",
+             "control for isolating entropy from fragments and overlap. "
+             "families: fixed length drawn from exactly --prefix-families "
+             "openings, holding rule count, length and therefore density "
+             "constant so a sweep isolates automaton width",
     )
+    parser.add_argument("--prefix-families", type=int, default=64,
+                        help="distinct 4-byte openings, with --literals families")
+    parser.add_argument("--literal-length", type=int, default=12,
+                        help="literal length in bytes, with --literals families")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--runs-dir", type=Path,
                         default=REPO_ROOT / "artifacts" / "runs")
@@ -344,6 +389,9 @@ def main() -> int:
     print(f"building a {args.rules}-rule {args.literals} catalog")
     if args.literals == "sequential":
         catalog = build_sequential_catalog(args.rules)
+    elif args.literals == "families":
+        catalog = build_family_catalog(
+            args.rules, args.prefix_families, args.literal_length, rng)
     else:
         catalog = build_catalog(args.rules, rng)
     literals = [value for value, _ in catalog]
@@ -376,7 +424,8 @@ def main() -> int:
     shares = (f"f{int(args.fragment_share * 100)}"
               f"a{int(args.adjacency_share * 100)}"
               f"o{int(args.overlap_share * 100)}")
-    run_id = (f"stress-{args.literals}-{shares}-{args.seed}-"
+    width = f"-p{args.prefix_families}" if args.literals == "families" else ""
+    run_id = (f"stress-{args.literals}{width}-{shares}-{args.seed}-"
               f"{args.rules}r-{args.docs}d")
     generated = args.runs_dir / run_id / "generated"
     generated.mkdir(parents=True, exist_ok=True)
