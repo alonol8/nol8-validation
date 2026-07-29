@@ -53,6 +53,12 @@ Its README explains provenance.
 `artifacts/runs/` is **not** tracked. Anything that matters goes to
 `artifacts/evidence/`.
 
+## Added 2026-07-29
+
+- `WHAT-COSTS-A-MATCHER.md` - an ablation of why realistically-shaped values cost
+  the software engine ~6x synthetic ones, including the four hypotheses that
+  failed and the residual none of them explains.
+
 ## Added 2026-07-27
 
 - `CORPUS-REALISM.md` - what the generated corpora contain, the match densities

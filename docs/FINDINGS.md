@@ -554,6 +554,7 @@ live path.
 | `docs/issues/internal/KNOWN_BEHAVIORS.md` | KB-001 (THM-5) and the THM-4 authoring constraint |
 | `docs/issues/internal/ENGINE-SEMANTICS.md` | THM-8, THM-9, and the KB-001 re-attribution, with reproductions |
 | `docs/CORPUS-REALISM.md` | what the generated corpora contain and the density they reach |
+| `docs/WHAT-COSTS-A-MATCHER.md` | measured ablation: which input properties cost the software engine, and which do not |
 | `docs/CODE_REVIEW_PLAN.md` | FW-1 to FW-7 with tiering |
 | `docs/issues/internal/technical_debt.md` | minor framework debt, no customer impact |
 | `docs/architecture/validation-boundaries.md` | what the framework does and does not prove |
