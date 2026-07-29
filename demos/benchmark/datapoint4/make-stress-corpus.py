@@ -370,7 +370,14 @@ def main() -> int:
     print(f"  {nested} literals contain another entry "
           f"({100 * nested / max(1, len(literals)):.1f}%)")
 
-    run_id = f"stress-{args.seed}-{args.rules}r-{args.docs}d"
+    # The literal mode and the three shares are in the id: two arms of an
+    # ablation must not land in the same directory and silently overwrite each
+    # other, which is exactly what happens when only rules/docs/seed are encoded.
+    shares = (f"f{int(args.fragment_share * 100)}"
+              f"a{int(args.adjacency_share * 100)}"
+              f"o{int(args.overlap_share * 100)}")
+    run_id = (f"stress-{args.literals}-{shares}-{args.seed}-"
+              f"{args.rules}r-{args.docs}d")
     generated = args.runs_dir / run_id / "generated"
     generated.mkdir(parents=True, exist_ok=True)
 
