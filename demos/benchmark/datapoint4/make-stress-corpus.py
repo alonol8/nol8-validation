@@ -51,6 +51,7 @@ want the engines to be directly comparable byte for byte.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import random
 import string
@@ -418,17 +419,36 @@ def main() -> int:
     print(f"  {nested} literals contain another entry "
           f"({100 * nested / max(1, len(literals)):.1f}%)")
 
-    # The literal mode and the three shares are in the id: two arms of an
-    # ablation must not land in the same directory and silently overwrite each
-    # other, which is exactly what happens when only rules/docs/seed are encoded.
-    shares = (f"f{int(args.fragment_share * 100)}"
-              f"a{int(args.adjacency_share * 100)}"
-              f"o{int(args.overlap_share * 100)}")
-    width = f"-p{args.prefix_families}" if args.literals == "families" else ""
-    run_id = (f"stress-{args.literals}{width}-{shares}-{args.seed}-"
-              f"{args.rules}r-{args.docs}d")
+    # Every parameter that affects the corpus goes into the id, via a digest of
+    # all of them rather than a hand-written list. Two arms of an ablation must
+    # never land in the same directory: the second overwrites the first, the
+    # comparison still looks fine, and both numbers describe one corpus. That has
+    # already cost two sweeps here - once on the literal mode, once on the shares
+    # - and a hand-maintained list drifts the moment a flag is added, so the
+    # digest covers whatever the parser holds.
+    #
+    # The readable part carries what a person needs to recognise an arm; the
+    # digest guarantees separation. Because a digest alone is opaque, the full
+    # parameter set is written beside the corpus so any run can be decoded and
+    # reproduced.
+    settings = {
+        key: value for key, value in sorted(vars(args).items())
+        if key != "runs_dir"        # where it is written does not change what it is
+    }
+    digest = hashlib.sha1(
+        json.dumps(settings, sort_keys=True, default=str).encode("utf-8")
+    ).hexdigest()[:8]
+    readable = f"{args.literals}-{args.rules}r-{args.docs}d"
+    if args.literals == "families":
+        readable += f"-p{args.prefix_families}-l{args.literal_length}"
+    run_id = f"stress-{readable}-{digest}"
+
     generated = args.runs_dir / run_id / "generated"
     generated.mkdir(parents=True, exist_ok=True)
+    (args.runs_dir / run_id / "stress-params.json").write_text(
+        json.dumps(settings, indent=2, sort_keys=True, default=str) + "\n",
+        encoding="utf-8",
+    )
 
     policy_path = generated / "scale-policy.nol"
     with policy_path.open("w", encoding="utf-8") as handle:
