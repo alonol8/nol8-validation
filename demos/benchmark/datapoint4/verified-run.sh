@@ -159,7 +159,10 @@ for E in $ENGINES; do
     --concurrency "$CONCURRENCY" --payloads "$PAYLOAD" \
     "--cap-$PAYLOAD" "$CAP" --warmup "$WARMUP" --duration "$DURATION" \
     "${EXPECTED_ARG[@]}" --output "$OUT" | tee "$LOG" | sed 's/^/   /'
-  if grep -q 'WRONG' "$LOG"; then
+  # Parse the count, not the word: the driver's success line is "... 0 WRONG",
+  # so grepping for the string reports failure on every verified run.
+  N_WRONG="$(grep -oE '[0-9]+ WRONG' "$LOG" | awk '{s+=$1} END{print s+0}')"
+  if [ "${N_WRONG:-0}" -gt 0 ]; then
     WRONG=1
   fi
 done
@@ -183,6 +186,12 @@ if [ "$WRONG" = "1" ]; then
   echo "   Do not quote these throughput figures: an engine doing the wrong job"
   echo "   is not comparable to one doing the right job. See the divergence with:"
   echo
+  # The endpoints are exported inside this script's own process, so a command
+  # pasted into a fresh shell needs them again or it reports "no endpoint
+  # configured" and looks like a second failure.
+  echo "   set -a; source config/demo.env; source .env; set +a"
+  echo "   export THEMIS_ENDPOINT=\"\$THEMIS_PROCESS_ENDPOINT\""
+  echo "   export AERGIA_ENDPOINT=\"\$AERGIA_PROCESS_ENDPOINT\""
   echo "   python demos/benchmark/verify-corpus.py --policy $POLICY \\"
   echo "     --corpus $CORPUS --engines ${ENGINES// /,} --limit 20"
   exit 1
