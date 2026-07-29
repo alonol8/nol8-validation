@@ -198,8 +198,20 @@ _SEQUENTIAL_FAMILIES = (
 )
 
 
+# How much of the noise alphabet the literals draw from. This is the share of
+# noise bytes that can begin - or continue - a match attempt at all: with a
+# narrow literal alphabet most of the stream is skipped without the matcher
+# entering its automaton, and with a wide one almost every byte is a candidate.
+LITERAL_ALPHABETS = {
+    "narrow": string.ascii_lowercase + string.digits,          # 36 of 94
+    "medium": string.ascii_letters + string.digits,            # 62 of 94
+    "wide": NOISE_ALPHABET.replace(" ", ""),                   # ~93 of 94
+}
+
+
 def build_family_catalog(
-    count: int, families: int, length: int, rng: random.Random
+    count: int, families: int, length: int, rng: random.Random,
+    alphabet: str = "narrow",
 ) -> list[tuple[str, str]]:
     """Literals of one fixed length drawn from exactly `families` openings.
 
@@ -212,11 +224,11 @@ def build_family_catalog(
     A smooth curve means ordinary cache pressure. A knee means a budget being
     exhausted, which is a different and more interesting claim.
     """
-    alphabet = string.ascii_lowercase + string.digits
+    chars = LITERAL_ALPHABETS[alphabet]
     prefixes: list[str] = []
     seen_prefix: set[str] = set()
     while len(prefixes) < families:
-        candidate = "".join(rng.choice(alphabet) for _ in range(4))
+        candidate = "".join(rng.choice(chars) for _ in range(4))
         if candidate not in seen_prefix:
             seen_prefix.add(candidate)
             prefixes.append(candidate)
@@ -226,7 +238,7 @@ def build_family_catalog(
     attempts = 0
     while len(catalog) < count and attempts < count * 64:
         attempts += 1
-        tail = "".join(rng.choice(alphabet) for _ in range(max(1, length - 4)))
+        tail = "".join(rng.choice(chars) for _ in range(max(1, length - 4)))
         value = prefixes[len(catalog) % families] + tail
         if value in seen:
             continue
@@ -378,6 +390,12 @@ def main() -> int:
                         help="distinct 4-byte openings, with --literals families")
     parser.add_argument("--literal-length", type=int, default=12,
                         help="literal length in bytes, with --literals families")
+    parser.add_argument("--literal-alphabet", choices=tuple(LITERAL_ALPHABETS),
+                        default="narrow",
+                        help="how much of the noise alphabet the literals use, "
+                             "with --literals families. This is the share of "
+                             "noise bytes that can begin or continue a match "
+                             "attempt: narrow 36/94, medium 62/94, wide 93/94")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--runs-dir", type=Path,
                         default=REPO_ROOT / "artifacts" / "runs")
@@ -392,7 +410,8 @@ def main() -> int:
         catalog = build_sequential_catalog(args.rules)
     elif args.literals == "families":
         catalog = build_family_catalog(
-            args.rules, args.prefix_families, args.literal_length, rng)
+            args.rules, args.prefix_families, args.literal_length, rng,
+            args.literal_alphabet)
     else:
         catalog = build_catalog(args.rules, rng)
     literals = [value for value, _ in catalog]
@@ -440,7 +459,8 @@ def main() -> int:
     ).hexdigest()[:8]
     readable = f"{args.literals}-{args.rules}r-{args.docs}d"
     if args.literals == "families":
-        readable += f"-p{args.prefix_families}-l{args.literal_length}"
+        readable += (f"-p{args.prefix_families}-l{args.literal_length}"
+                     f"-{args.literal_alphabet}")
     run_id = f"stress-{readable}-{digest}"
 
     generated = args.runs_dir / run_id / "generated"
