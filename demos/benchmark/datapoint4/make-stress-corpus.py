@@ -186,6 +186,34 @@ def _func(rng):
 GENERATORS = (_email, _card, _ssn, _phone, _name, _ipv4, _mac, _uuid,
               _hostname, _iban, _swift, _icd, _drug, _func)
 
+# Low-entropy families, for isolating entropy from the other three properties.
+# Fixed prefix, fixed width, sequential index - so thousands of literals collapse
+# into a handful of trie branches, which is what the production-shaped generators
+# produce and what makes them cheap to scan.
+_SEQUENTIAL_FAMILIES = (
+    ("CUST-", "CUST"), ("PAT-", "PATIENT"), ("EMP-", "EMP"), ("CASE-", "CASE"),
+    ("INV-", "INVOICE"), ("MRN-", "MRN"), ("CTR-", "CONTRACT"), ("MEM-", "MEMBER"),
+    ("CLM-", "CLAIM"), ("ACCT-", "ACCT"),
+)
+
+
+def build_sequential_catalog(count: int) -> list[tuple[str, str]]:
+    """Sequential fixed-width literals: the low-entropy control.
+
+    Deliberately deterministic and unshuffled by value - the point is maximum
+    prefix sharing, so every literal in a family differs only in its trailing
+    digits.
+    """
+    catalog: list[tuple[str, str]] = []
+    per_family = -(-count // len(_SEQUENTIAL_FAMILIES))
+    for prefix, kind in _SEQUENTIAL_FAMILIES:
+        for index in range(1, per_family + 1):
+            if len(catalog) >= count:
+                break
+            token = f"[{kind}-{len(catalog)}]"
+            catalog.append((f"{prefix}{index:06d}", token[:15]))
+    return catalog
+
 
 def build_catalog(count: int, rng: random.Random) -> list[tuple[str, str]]:
     """Literals and their replacement tokens.
@@ -297,6 +325,13 @@ def main() -> int:
     parser.add_argument("--overlap-share", type=float, default=0.14,
                         help="share that are two literals sharing bytes. Above "
                              "zero the engines legitimately differ (ES-1)")
+    parser.add_argument(
+        "--literals", choices=("entropy", "sequential"), default="entropy",
+        help="entropy: random values sharing almost no prefix, so N literals "
+             "become close to N trie branches. sequential: fixed-width values "
+             "in a few families, collapsing into a handful of branches - the "
+             "control for isolating entropy from fragments and overlap",
+    )
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--runs-dir", type=Path,
                         default=REPO_ROOT / "artifacts" / "runs")
@@ -306,12 +341,23 @@ def main() -> int:
         raise SystemExit("the three shares must sum to at most 1.0")
 
     rng = random.Random(args.seed)
-    print(f"building a {args.rules}-rule catalog of high-entropy literals")
-    catalog = build_catalog(args.rules, rng)
+    print(f"building a {args.rules}-rule {args.literals} catalog")
+    if args.literals == "sequential":
+        catalog = build_sequential_catalog(args.rules)
+    else:
+        catalog = build_catalog(args.rules, rng)
     literals = [value for value, _ in catalog]
     lengths = sorted(len(v) for v in literals)
     print(f"  {len(catalog)} literals, length {lengths[0]}-{lengths[-1]} "
           f"(median {lengths[len(lengths)//2]})")
+
+    # A proxy for automaton width: how many distinct four-byte openings the
+    # literals present. A matcher branches on those, so it is the difference
+    # between one trie branch and thousands - and it is the number that separates
+    # the two catalog modes.
+    openings = len({value[:4] for value in literals})
+    print(f"  {openings} distinct 4-byte openings "
+          f"({100 * openings / max(1, len(literals)):.1f}% of literals)")
 
     # How much of the catalog contains another entry. The ordinary generators
     # refuse this; here it is expected, and worth reporting because it is what
