@@ -202,6 +202,7 @@ def _rule_catalog(workload: Mapping[str, Any]) -> list[ScaleRule]:
     rng = random.Random(int(workload["seed"]))
     rules: list[ScaleRule] = []
     used_variants: set[str] = set()
+    variants_by_pattern: dict[str, list[str]] = {}
     for index in range(1, rule_count + 1):
         category_id, family = _weighted_item(families, rng)
         patterns = family.get("patterns")
@@ -211,13 +212,16 @@ def _rule_catalog(workload: Mapping[str, Any]) -> list[ScaleRule]:
             )
         pattern_id = str(patterns[(index - 1) % len(patterns)])
         rule_id = f"rule-{index:06d}"
+        siblings = variants_by_pattern.setdefault(pattern_id, [])
         variant = _unique_rule_value(
             pattern_id,
             index,
             used_variants,
+            siblings,
             rule_count,
         )
         used_variants.add(variant)
+        siblings.append(variant)
         replacement = _replacement_token(str(category_id), pattern_id)
         rules.append(
             ScaleRule(
@@ -237,83 +241,260 @@ def _unique_rule_value(
     pattern_id: str,
     index: int,
     used_variants: set[str],
+    siblings: list[str],
     rule_count: int,
 ) -> str:
-    """Return the first deterministic, unused literal for a catalog rule."""
+    """Return the first deterministic literal that neither repeats nor nests.
 
-    for offset in range(rule_count + 1):
+    Values of one type are the ones that can sit inside each other - 10.1.2.3
+    inside 110.1.2.3, "Elena Chen" inside "Elena Chen Jr." - and a real watch
+    list does contain such pairs. A catalog used to check output cannot: every
+    document carrying the outer literal matches the inner one too, and the two
+    engines resolve that overlap differently (ENGINE-SEMANTICS ES-1), so the
+    document has two defensible answers and settles nothing. Skipping the value
+    costs nothing, because the next one is just as realistic.
+
+    Compared against values of the same pattern only, which is where the risk
+    is; `find_contained_literals` covers the whole catalog once it is built.
+    """
+
+    # The scan looks a fixed distance further than the catalog is long. Value
+    # types differ enormously in how many distinct values they have - unlimited
+    # for an API key, a few hundred for internal project names - and the narrow
+    # ones need to look further along the sequence before they reach one not
+    # already taken.
+    for offset in range(rule_count + 1024):
         variant = _realistic_rule_value(pattern_id, index + offset)
-        if variant not in used_variants:
-            return variant
+        if variant in used_variants:
+            continue
+        if any(variant in other or other in variant for other in siblings):
+            continue
+        return variant
     raise ValueError(
         f"Unable to generate a unique policy value for pattern '{pattern_id}'."
     )
 
 
+# Internal project and product names are words somebody picked, and an
+# organisation of any size accumulates hundreds of them across its programmes,
+# acquisitions and retired product lines. Combined with the qualifiers below this
+# covers the order a real internal-names watch list runs at.
+_CODEWORDS = (
+    "Northstar", "Cedar", "Lantern", "Halyard", "Basalt", "Meridian", "Quarry",
+    "Tidewater", "Kestrel", "Foundry", "Ledger", "Beacon", "Harbor", "Ironwood",
+    "Solstice", "Trellis", "Cascade", "Anvil", "Bluefin", "Compass", "Driftwood",
+    "Everest", "Fathom", "Granite", "Highland", "Inkwell", "Juniper", "Keystone",
+    "Limestone", "Mariner", "Nimbus", "Orchard", "Pinnacle", "Quicksilver",
+    "Redwood", "Sandpiper", "Thornfield", "Umber", "Vantage", "Wayfarer",
+    "Alder", "Birchwood", "Copperhead", "Dunmore", "Eastgate", "Farrier",
+    "Goldleaf", "Hollowell", "Ivyridge", "Jetstream", "Kilnhouse", "Longacre",
+    "Millbrook", "Netherfield", "Oakhurst", "Penrose", "Quillon", "Ravenscar",
+    "Stonebridge", "Thistledown", "Underhill", "Verdant", "Westmark", "Yardley",
+    "Ashgrove", "Blackthorn", "Clearwater", "Deepwell", "Elmshaw", "Fernhill",
+    "Glenmoor", "Hawkridge", "Ironvale", "Kingsford", "Larkspur", "Moorgate",
+    "Nightjar", "Overton", "Peregrine", "Rosewood",
+)
+
+# What a programme is called once it is under way. These are the words that end
+# up in a document title, which is where a policy tends to pick names up.
+_PROJECT_PHASES = (
+    "Phase 2", "Phase 3", "Migration", "Rollout", "Refresh", "Cutover",
+    "Sunset", "Pilot", "Remediation", "Consolidation",
+)
+
+
+def _card_number(rand: random.Random) -> str:
+    """A card number the way one appears in a document.
+
+    Brand prefixes and lengths are the real ones, and the digits after the prefix
+    carry no structure, so a catalog of these shares only its first two bytes -
+    the same shape a card-number watch list has in production. Written grouped
+    about half the time, because that is how a person copies one into a form.
+    """
+    prefix, length = rand.choice(
+        (("4", 16), ("51", 16), ("53", 16), ("55", 16), ("34", 15), ("37", 15),
+         ("6011", 16), ("65", 16)),
+    )
+    digits = prefix + "".join(
+        str(rand.randint(0, 9)) for _ in range(length - len(prefix))
+    )
+    if rand.random() < 0.5:
+        return digits
+    separator = rand.choice((" ", "-"))
+    if length == 15:
+        return separator.join((digits[:4], digits[4:10], digits[10:]))
+    return separator.join(digits[i:i + 4] for i in range(0, 16, 4))
+
+
 def _realistic_rule_value(pattern_id: str, index: int) -> str:
+    # Wide enough that a name-heavy policy does not run out of distinct people
+    # before it runs out of rules: 40x40 pairs across several written forms.
     first_names = (
         "Sandra", "James", "Alicia", "Marcus", "Priya", "Daniel", "Elena",
         "Thomas", "Naomi", "Victor", "Caroline", "Anthony", "Maya", "Robert",
         "Linda", "Samuel", "Diana", "Joseph", "Rachel", "William",
+        "Farida", "Kenji", "Olivia", "Hassan", "Ingrid", "Mateo", "Yuki",
+        "Gabriel", "Nadia", "Owen", "Beatriz", "Dmitri", "Chloe", "Amara",
+        "Sean", "Lucia", "Tobias", "Hana", "Emeka", "Vera",
     )
     last_names = (
         "Hernandez", "Lee", "Patel", "Bennett", "Ramirez", "Morgan", "Chen",
         "Williams", "Johnson", "Davis", "Taylor", "Martin", "Clark", "Lewis",
         "Walker", "Young", "King", "Wright", "Scott", "Green",
+        "Okafor", "Nakamura", "Fitzgerald", "Kowalski", "Silva", "Haddad",
+        "Berg", "Novak", "Rossi", "Dubois", "Andersen", "Muller", "Oyelaran",
+        "Reyes", "Castillo", "Sharma", "Whitfield", "Larsen", "Correa", "Bauer",
     )
     domains = (
         "brightline.co", "workhub.org", "northstar.dev", "riverbend.net",
         "cloudpeak.io", "granitehq.com", "summitworks.net", "silverline.org",
+        "meridianpath.com", "orchardgate.net", "lumen-works.io", "faircove.org",
     )
     first = first_names[(index - 1) % len(first_names)]
     last = last_names[((index - 1) // len(first_names)) % len(last_names)]
     suffix = f"{index:06d}"
+
+    # Entropy per value type, matching what the identifier actually looks like
+    # in production. Everything here used to be a sequential counter, which is
+    # right for some of these and wrong for others - and getting it wrong in one
+    # direction made every catalog collapse into a handful of trie branches
+    # (docs/WHAT-COSTS-A-MATCHER.md). Getting it wrong in the other direction
+    # would be just as bad: a customer table really does have sequential account
+    # numbers, and randomising those to make a benchmark harder would be the
+    # same error inverted.
+    #
+    # `rand` is seeded from the pattern and index, so a value is high-entropy in
+    # appearance and still reproducible from the workload seed.
+    rand = random.Random(f"{pattern_id}:{index}")
+
+    def hexes(count: int) -> str:
+        return "".join(rand.choice("0123456789abcdef") for _ in range(count))
+
+    def token(count: int) -> str:
+        alphabet = (
+            "abcdefghijklmnopqrstuvwxyz"
+            "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+        )
+        return "".join(rand.choice(alphabet) for _ in range(count))
+
     generators: dict[str, Callable[[], str]] = {
-        # Every variable component below is fixed width. A variable-width index
-        # lets one literal sit inside another - "Elena Chen" inside "Elena Chen
-        # 1327" - and overlapping matches silently corrupt Themis output
-        # (ISSUE-004), so a catalog containing them cannot validate anything
-        # else.
-        "person_name": lambda: f"{first} {last} {index:05d}",
-        "email_address": lambda: (
-            f"{first}.{last}{index}@{domains[index % len(domains)]}"
+        # --- genuinely random in production: credentials and infrastructure ---
+        "api_key": lambda: f"sk_live_{token(rand.randint(24, 32))}",
+        "access_token": lambda: f"at_{token(rand.randint(28, 40))}",
+        "bearer_token": lambda: f"Bearer {token(18)}.{token(rand.randint(20, 30))}.{token(27)}",
+        "password": lambda: token(rand.randint(12, 18)) + rand.choice("!@#$%&*"),
+        "private_key_marker": lambda: (
+            f"-----BEGIN PRIVATE KEY----- {token(rand.randint(20, 34))}"
         ),
-        "phone_number": lambda: f"+1-704-{200 + index % 800:03d}-{index % 10000:04d}",
-        "street_address": lambda: (
-            f"{100000 + index} Cedar Avenue, Charlotte NC"
+        "connection_string": lambda: (
+            f"postgresql://svc_{token(6)}:{token(rand.randint(14, 22))}"
+            f"@db-{hexes(6)}.internal/{rand.choice(('customer', 'billing', 'claims'))}"
+        ),
+        "cloud_resource_id": lambda: (
+            f"arn:aws:s3:::{rand.choice(('cust', 'arch', 'audit'))}-{token(rand.randint(10, 18))}"
+        ),
+        "database_uri": lambda: (
+            f"postgresql://readonly@db-{hexes(8)}.internal/{token(rand.randint(6, 12))}"
+        ),
+        "internal_url": lambda: (
+            f"https://portal.internal.example/{rand.choice(('c', 'accounts', 'r'))}"
+            f"/{hexes(rand.randint(12, 24))}"
+        ),
+        # Mostly private ranges, because that is what an internal watch list
+        # holds, with a share of routable addresses from egress logs.
+        "ipv4_address": lambda: rand.choice((
+            f"10.{rand.randint(0, 255)}.{rand.randint(0, 255)}.{rand.randint(1, 254)}",
+            f"192.168.{rand.randint(0, 255)}.{rand.randint(1, 254)}",
+            f"172.{rand.randint(16, 31)}.{rand.randint(0, 255)}.{rand.randint(1, 254)}",
+            f"{rand.randint(13, 213)}.{rand.randint(0, 255)}"
+            f".{rand.randint(0, 255)}.{rand.randint(1, 254)}",
+        )),
+        "ipv6_address": lambda: f"2001:db8:{hexes(4)}:{hexes(4)}::{hexes(rand.randint(1, 4))}",
+        "hostname": lambda: (
+            f"{rand.choice(('app', 'api', 'db', 'cache', 'edge', 'worker'))}"
+            f"-{hexes(rand.randint(4, 8))}"
+            f".{rand.choice(('internal.example', 'corp.example', 'svc.example'))}"
+        ),
+
+        # --- random within a fixed format: financial and government numbers ---
+        # Brand prefix then filler to that brand's length, sometimes written in
+        # groups the way a person types one into a form or a ticket.
+        "credit_card_number": lambda: _card_number(rand),
+        "bank_account_number": lambda: "".join(
+            str(rand.randint(0, 9)) for _ in range(rand.randint(9, 12))
+        ),
+        "routing_number": lambda: "".join(str(rand.randint(0, 9)) for _ in range(9)),
+        "iban": lambda: (
+            rand.choice(("GB", "DE", "FR", "NL"))
+            + "".join(str(rand.randint(0, 9)) for _ in range(rand.randint(16, 25)))
         ),
         "social_security_number": lambda: (
-            f"{100 + index % 800:03d}-{10 + index % 90:02d}-{index % 10000:04d}"
+            f"{rand.randint(101, 899):03d}-{rand.randint(10, 99):02d}-"
+            f"{rand.randint(1000, 9999):04d}"
         ),
-        "date_of_birth": lambda: f"{1950 + index % 55:04d}-{1 + index % 12:02d}-{1 + index % 28:02d}",
-        "api_key": lambda: f"sk_test_enterprise_{suffix}",
-        "access_token": lambda: f"access_{suffix}_synthetic_demo",
-        "bearer_token": lambda: f"Bearer demo.{suffix}.signature",
-        "password": lambda: f"DemoPass-{suffix}!",
-        "private_key_marker": lambda: f"-----BEGIN PRIVATE KEY----- DEMO-{suffix}",
-        "connection_string": lambda: f"postgresql://demo{index}:safe@db-{index}.internal/customer",
-        "credit_card_number": lambda: f"4111-1111-{index % 10000:04d}-{(index * 7) % 10000:04d}",
-        "bank_account_number": lambda: f"{100000000000 + index}",
-        "routing_number": lambda: f"{100000000 + index % 899999999:09d}",
-        "iban": lambda: f"GB{10 + index % 90:02d}DEMO{index:014d}",
+        "phone_number": lambda: (
+            f"+1-{rand.randint(201, 989)}-{rand.randint(200, 999)}-"
+            f"{rand.randint(1000, 9999)}"
+        ),
+
+        # --- low entropy in reality, but variable length: people and places ---
+        # No numeric suffix, so these can nest ("Elena Chen" inside "Elena Chen
+        # Jr."), which is what a real name list does.
+        "person_name": lambda: rand.choice((
+            f"{first} {last}",
+            f"{first} {rand.choice('ABCDEJKLMRST')}. {last}",
+            f"{last}, {first}",
+            f"{first} {last} {rand.choice(('Jr.', 'Sr.', 'III'))}",
+        )),
+        "email_address": lambda: rand.choice((
+            f"{first.lower()}.{last.lower()}@{rand.choice(domains)}",
+            f"{first.lower()}{rand.randint(1, 9999)}@{rand.choice(domains)}",
+            f"{first[0].lower()}.{last.lower()}@{rand.choice(domains)}",
+        )),
+        "street_address": lambda: (
+            f"{rand.randint(10, 99999)} "
+            f"{rand.choice(('Cedar', 'Juniper', 'Aspen', 'Linden', 'Walnut'))} "
+            f"{rand.choice(('Avenue', 'Street', 'Road', 'Lane'))}, "
+            f"{rand.choice(('Charlotte NC', 'Raleigh NC', 'Durham NC'))}"
+        ),
+        "date_of_birth": lambda: (
+            f"{rand.randint(1945, 2004)}-{rand.randint(1, 12):02d}-"
+            f"{rand.randint(1, 28):02d}"
+        ),
+
+        # --- genuinely sequential in production: issued reference numbers ---
+        # A billing system counts invoices; a helpdesk counts cases. Randomising
+        # these would make the corpus harder and less true, so they stay.
         "invoice_number": lambda: f"INV-{20260000 + index}",
-        "ipv4_address": lambda: (
-            f"10.{index % 250:03d}.{(index // 250) % 250:03d}"
-            f".{1 + index % 249:03d}"
-        ),
-        "ipv6_address": lambda: f"2001:db8::{index:04x}",
-        "hostname": lambda: f"customer-app-{index:04d}.internal.example",
-        "internal_url": lambda: f"https://portal.internal.example/customers/{suffix}",
-        "cloud_resource_id": lambda: f"arn:aws:s3:::synthetic-customer-{suffix}",
-        "database_uri": lambda: f"postgresql://readonly@db.internal/customer_{suffix}",
         "patient_id": lambda: f"PAT-{suffix}",
         "member_id": lambda: f"MEM-{suffix}",
         "claim_number": lambda: f"CLM-{suffix}",
         "medical_record_number": lambda: f"MRN-{suffix}",
         "customer_id": lambda: f"CUST-{suffix}",
         "employee_id": lambda: f"EMP-{suffix}",
-        "project_codename": lambda: f"Project Cedar-{index:05d}",
-        "internal_product_name": lambda: f"Northstar Suite {index:05d}",
+
+        # --- named, not numbered: what people call things internally ---
+        # A codename is a word somebody chose, so a list of them shares nothing
+        # but the occasional first letter.
+        # Written both ways in practice: the formal "Project X" and the shorthand
+        # "X Migration" that the team running it actually uses.
+        "project_codename": lambda: rand.choice((
+            f"Project {rand.choice(_CODEWORDS)}",
+            f"{rand.choice(_CODEWORDS)} {rand.choice(_PROJECT_PHASES)}",
+        )),
+        "internal_product_name": lambda: " ".join(
+            part for part in (
+                rand.choice(_CODEWORDS),
+                rand.choice((
+                    "", "", "Billing", "Identity", "Claims", "Analytics",
+                    "Payments", "Records", "Access", "Reporting",
+                )),
+                rand.choice((
+                    "Suite", "Platform", "Gateway", "Console", "Engine", "Hub",
+                    "Service", "Manager",
+                )),
+            ) if part
+        ),
         "support_case_id": lambda: f"CASE-{suffix}",
         "contract_number": lambda: f"CTR-{suffix}",
     }
@@ -373,6 +554,92 @@ def _deterministic_record(
         else:
             record[field_name] = _generate_field_value(field_name, rng)
     return record
+
+
+def _text_fields(container: Any) -> list[tuple[Any, Any, str]]:
+    """Every string in a record, as (container, key, text) so it can be edited."""
+    found: list[tuple[Any, Any, str]] = []
+    if isinstance(container, dict):
+        items: Any = container.items()
+    elif isinstance(container, list):
+        items = enumerate(container)
+    else:
+        return found
+    for key, value in items:
+        if isinstance(value, str):
+            found.append((container, key, value))
+        else:
+            found.extend(_text_fields(value))
+    return found
+
+
+def _fit_within_ceiling(
+    record: dict[str, Any],
+    *,
+    format_name: str,
+    scenario_name: str,
+    message: str,
+    maximum_bytes: int,
+    protected: set[str],
+) -> str:
+    """Bring a document back under the ceiling its size profile sets.
+
+    Identifiers vary in length in reality - a bearer token runs several times
+    the length of an account number - so a short record assembled around a few
+    of them can come out longer than its profile allows. Two things give, in
+    order: first the surrounding prose gets shorter, then the note mentions one
+    fewer thing. Both are what a shorter record actually looks like. A record
+    keeps at least one of its watched values, so trimming never turns a document
+    that was generated to carry one into a document that carries none.
+    """
+
+    def reserialize() -> str:
+        return _serialize_record(
+            record=record, format_name=format_name, scenario_name=scenario_name
+        )
+
+    def carries_value(text: str) -> bool:
+        return any(value and value in text for value in protected)
+
+    for _ in range(12):
+        size = len(message.encode("utf-8"))
+        if size <= maximum_bytes:
+            return message
+        excess = size - maximum_bytes
+        fields = _text_fields(record)
+
+        # Prose first: shorten the longest sentence that is not carrying a value.
+        spare = [
+            item for item in fields if len(item[2]) > 40 and not carries_value(item[2])
+        ]
+        if spare:
+            container, key, text = max(spare, key=lambda item: len(item[2]))
+            keep = max(40, len(text) - excess - 1)
+            trimmed = text[:keep].rsplit(" ", 1)[0].rstrip(" ,;")
+            if trimmed and trimmed != text:
+                container[key] = trimmed + "."
+                message = reserialize()
+                continue
+
+        # Then drop one reference. A note is a list of sentences; the record
+        # simply mentions one thing fewer than it would have.
+        multi = [item for item in fields if item[2].count("\n") >= 1]
+        if not multi:
+            return message
+        container, key, text = max(multi, key=lambda item: len(item[2]))
+        lines = text.split("\n")
+        removable = [
+            position
+            for position, line in enumerate(lines)
+            if sum(1 for other in lines if carries_value(other)) > 1
+            or not carries_value(line)
+        ]
+        if not removable:
+            return message
+        del lines[max(removable)]
+        container[key] = "\n".join(lines)
+        message = reserialize()
+    return message
 
 
 def _inject_rules(
@@ -647,6 +914,54 @@ def _expected_result(
     return expected, matches, overlap_count
 
 
+def _catalog_profile(
+    rules: list[ScaleRule],
+    contained_literal_pairs: int,
+) -> dict[str, Any]:
+    """The shape of the rule catalog itself.
+
+    Two policies with the same rule count can be very different things to match:
+    a list of sequential account numbers shares nearly every byte between
+    entries, while a list of API keys shares none. That difference moves software
+    matcher throughput by several times at identical density
+    (docs/WHAT-COSTS-A-MATCHER.md), so a run's numbers are only interpretable
+    next to these figures.
+    """
+    literals = sorted({rule.variant for rule in rules})
+    if not literals:
+        return {"literal_count": 0}
+    lengths = [len(literal) for literal in literals]
+    # Longest shared prefix with the closest neighbour, which is the adjacent
+    # entry once sorted. High values mean the catalog collapses into a few
+    # branches near the root; low values mean it fans out immediately.
+    shared = []
+    for position, literal in enumerate(literals):
+        best = 0
+        for neighbour in literals[max(0, position - 1):position + 2]:
+            if neighbour is literal:
+                continue
+            common = 0
+            for left, right in zip(literal, neighbour):
+                if left != right:
+                    break
+                common += 1
+            best = max(best, common)
+        shared.append(best)
+    return {
+        "literal_count": len(literals),
+        "length_minimum": min(lengths),
+        "length_average": round(sum(lengths) / len(lengths), 2),
+        "length_maximum": max(lengths),
+        "distinct_openings": len({literal[:4] for literal in literals}),
+        "shared_prefix_average": round(sum(shared) / len(shared), 2),
+        "shared_prefix_maximum": max(shared),
+        # Literals that occur inside other literals. Real watch lists have some;
+        # the count matters because a document carrying the outer literal is a
+        # document where the two engines' overlap contracts disagree.
+        "contained_literal_pairs": contained_literal_pairs,
+    }
+
+
 def _input_profile(
     *,
     payload_bytes_total: int,
@@ -706,13 +1021,21 @@ def generate_scale_artifacts(
     requested_rules = int(workload["policy"]["rule_count"])
     _report_progress(progress_callback, "rules_started", 0, requested_rules)
     rules = _rule_catalog(workload)
-    # A catalog containing literals that sit inside one another cannot validate
-    # transformation correctness: every document carrying the outer literal
-    # also matches the inner one, and overlapping matches corrupt Themis output
-    # silently. Fail here rather than produce a corpus that cannot answer the
-    # question it was generated to answer.
+    # The catalog builder already skips a value that nests with another of its
+    # own type; this is the whole-catalog backstop, across types. A document
+    # carrying the outer literal of a nested pair matches the inner one too, and
+    # the two engines resolve that overlap differently (ENGINE-SEMANTICS ES-1),
+    # so such a document has two defensible answers and cannot check either
+    # engine's output.
+    #
+    # `policy.allow_contained_literals: true` accepts the catalog anyway. That is
+    # for a run that is deliberately about a watch list which really does hold
+    # both a value and a longer value containing it - the count is always
+    # recorded in the manifest's catalog_profile either way.
     contained_literals = find_contained_literals(rule.variant for rule in rules)
-    if contained_literals:
+    if contained_literals and not bool(
+        workload["policy"].get("allow_contained_literals", False)
+    ):
         examples = "; ".join(
             f"{inner!r} inside {outer!r}"
             for inner, outer in contained_literals[:3]
@@ -720,7 +1043,8 @@ def generate_scale_artifacts(
         raise ValueError(
             f"Rule catalog contains {len(contained_literals)} literal pair(s) "
             f"where one literal occurs inside another, which triggers ISSUE-004 "
-            f"and makes transformation results meaningless. Examples: {examples}"
+            f"and makes transformation results meaningless. Examples: {examples}. "
+            f"Set 'policy.allow_contained_literals: true' to accept it anyway."
         )
     _report_progress(
         progress_callback, "rules_completed", len(rules), requested_rules
@@ -920,6 +1244,15 @@ def generate_scale_artifacts(
                     format_name=format_name,
                     scenario_name=scenario_name,
                 )
+                if export_text is None:
+                    message = _fit_within_ceiling(
+                        record,
+                        format_name=format_name,
+                        scenario_name=scenario_name,
+                        message=message,
+                        maximum_bytes=int(size_profile["maximum_bytes"]),
+                        protected={rule.variant for rule in selected_rules},
+                    )
                 unpadded_size = len(message.encode("utf-8"))
                 if (
                     bool(size_profile.get("pad_to_target", False))
@@ -1050,6 +1383,8 @@ def generate_scale_artifacts(
         "overlapping_match_documents": documents_with_overlaps,
         "overlapping_match_examples": overlap_examples,
         "intended_clean_with_literals": intended_clean_with_literals,
+        # What the policy is, as a body of literals to match.
+        "catalog_profile": _catalog_profile(rules, len(contained_literals)),
         # What this corpus actually contains, as distinct from what was asked
         # for. Any result quoted from a run should be quoted with it.
         "input_profile": _input_profile(

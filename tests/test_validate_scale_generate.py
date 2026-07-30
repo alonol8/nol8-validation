@@ -143,21 +143,40 @@ class ValidateScaleGenerateTests(unittest.TestCase):
         return path
 
     def test_realistic_rule_values_are_deterministic_and_type_shaped(self) -> None:
-        values = {
-            pattern: _realistic_rule_value(pattern, 17)
-            for pattern in (
-                "email_address",
-                "customer_id",
-                "phone_number",
-                "street_address",
-            )
-        }
-        self.assertEqual(values["email_address"], _realistic_rule_value("email_address", 17))
-        self.assertRegex(values["email_address"], r"^[A-Za-z]+\.[A-Za-z]+\d+@[-a-z.]+$")
+        patterns = (
+            "email_address",
+            "customer_id",
+            "phone_number",
+            "street_address",
+            "api_key",
+            "credit_card_number",
+            "ipv4_address",
+        )
+        values = {pattern: _realistic_rule_value(pattern, 17) for pattern in patterns}
+        for pattern in patterns:
+            self.assertEqual(values[pattern], _realistic_rule_value(pattern, 17))
+        self.assertRegex(values["email_address"], r"^[a-z.]+\d*@[-a-z.]+$")
         self.assertRegex(values["customer_id"], r"^CUST-\d{6}$")
-        self.assertRegex(values["phone_number"], r"^\+1-704-\d{3}-\d{4}$")
-        self.assertRegex(values["street_address"], r"^\d+ Cedar Avenue, Charlotte NC$")
+        self.assertRegex(values["phone_number"], r"^\+1-\d{3}-\d{3}-\d{4}$")
+        self.assertRegex(values["street_address"], r"^\d+ [A-Za-z]+ [A-Za-z]+, [A-Za-z]+ NC$")
+        self.assertRegex(values["api_key"], r"^sk_live_[A-Za-z0-9]{24,32}$")
+        self.assertRegex(values["credit_card_number"], r"^[\d][\d \-]{13,18}$")
+        self.assertRegex(values["ipv4_address"], r"^(\d{1,3}\.){3}\d{1,3}$")
         self.assertTrue(all("NOL8_" not in value for value in values.values()))
+
+    def test_credential_values_do_not_share_a_common_stem(self) -> None:
+        """The property that makes a real credential list what it is.
+
+        An issued key carries no structure past its prefix, so a list of them
+        fans out immediately. When these were sequential counters, 5,000 rules
+        shared all but their last few bytes - which is not what a customer's
+        secret-scanning policy looks like, and reads far cheaper to match than
+        the real thing (docs/WHAT-COSTS-A-MATCHER.md).
+        """
+        keys = [_realistic_rule_value("api_key", index) for index in range(1, 200)]
+        self.assertEqual(len(set(keys)), len(keys))
+        # Distinct 12-byte openings, i.e. the shared "sk_live_" plus four bytes.
+        self.assertGreater(len({key[:12] for key in keys}), 150)
 
     def test_realistic_customer_artifacts_share_catalog_values(self) -> None:
         output = self.root / "realistic-generated"

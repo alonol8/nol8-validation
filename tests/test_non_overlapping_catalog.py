@@ -1,9 +1,13 @@
 """The generated rule catalog must not contain nested literals.
 
 A literal occurring inside another literal guarantees overlapping matches
-wherever the outer one appears, and overlapping matches silently corrupt
-Themis output (ISSUE-004). A catalog containing them cannot validate
-transformation correctness, so generation refuses to produce one.
+wherever the outer one appears, and the two engines resolve overlap differently
+(ENGINE-SEMANTICS ES-1), so a document carrying the outer literal has two
+defensible answers and cannot check either engine's output.
+
+Enforced in two places: the catalog builder skips a value that nests with one
+already accepted for the same pattern, and generation refuses a catalog that
+still contains a nested pair across patterns.
 """
 from __future__ import annotations
 
@@ -16,7 +20,7 @@ import yaml
 from framework.policy.matching import LiteralMatcher, overlapping_matches
 from framework.policy.overlap import find_contained_literals
 from framework.workload.generate_scale_artifacts import (
-    _realistic_rule_value,
+    _unique_rule_value,
     generate_scale_artifacts,
     supported_patterns,
 )
@@ -43,10 +47,24 @@ class ContainmentDetectionTests(unittest.TestCase):
 
 
 class RuleValueShapeTests(unittest.TestCase):
-    """The generators that previously produced nested literals."""
+    """The catalog builder, which is where the invariant is enforced.
+
+    Individual value shapes are realistic and so a few of them CAN nest - a real
+    address list holds 10.1.2.3 and 110.1.2.3, a real name list holds "Elena
+    Chen" and "Elena Chen Jr." - so the check belongs on the built catalog, not
+    on the generator. `_unique_rule_value` skips a value that nests with one
+    already accepted for the same pattern, which is where the risk lives.
+    """
 
     def values(self, pattern: str, count: int = 600) -> list[str]:
-        return [_realistic_rule_value(pattern, index) for index in range(1, count)]
+        """Values as the catalog builder would accept them for one pattern."""
+        used: set[str] = set()
+        accepted: list[str] = []
+        for index in range(1, count):
+            value = _unique_rule_value(pattern, index, used, accepted, count)
+            used.add(value)
+            accepted.append(value)
+        return accepted
 
     def test_person_names_are_not_nested(self) -> None:
         self.assertEqual(find_contained_literals(self.values("person_name")), [])
@@ -64,29 +82,27 @@ class RuleValueShapeTests(unittest.TestCase):
         values = self.values("person_name")
         self.assertEqual(len(values), len(set(values)))
 
-    def test_no_pattern_generator_produces_nested_literals(self) -> None:
+    def test_no_pattern_produces_a_nested_catalog(self) -> None:
         """Every supported pattern, not only the ones known to have failed.
 
-        Checking generators individually is whack-a-mole: the fixed-width fix
-        was applied to four generators and a fifth, internal_product_name, was
-        only caught when generation refused a real catalog.
+        Checking patterns individually is whack-a-mole: the original fix was
+        applied to four generators and a fifth, internal_product_name, was only
+        caught when generation refused a real catalog.
         """
         every_value: list[str] = []
         for pattern in ALL_PATTERNS:
-            values = [
-                _realistic_rule_value(pattern, index)
-                for index in range(1, 400)
-            ]
+            values = self.values(pattern, count=400)
             with self.subTest(pattern=pattern):
                 self.assertEqual(
                     find_contained_literals(values),
                     [],
-                    f"{pattern} produces nested literals",
+                    f"{pattern} produces a nested catalog",
                 )
             every_value.extend(values)
 
         # Also across families - a literal from one pattern must not sit
-        # inside a literal from another.
+        # inside a literal from another. Nothing dedupes across patterns during
+        # generation, so this is the case the whole-catalog guard exists for.
         self.assertEqual(find_contained_literals(every_value), [])
 
 

@@ -90,14 +90,37 @@ What can be said and defended:
 
 **Literal entropy is the lever, and it is the realistic one.** This matters more
 than the mechanism. Real watch lists contain API keys, bearer tokens, UUIDs, card
-numbers, MAC addresses and cloud resource identifiers - values that genuinely are
-random. `_realistic_rule_value` generates sequential counters
-(`CUST-000001`, `sk_test_enterprise_000123`), so 5,000 rules collapse into ten
-trie branches. That is the artifact, not the realistic case.
+numbers and cloud resource identifiers - values that genuinely are random.
+`_realistic_rule_value` used to generate sequential counters for all of them
+(`CUST-000001`, `sk_test_enterprise_000123`), so 5,000 rules collapsed into a
+handful of trie branches. That was the artifact, not the realistic case.
 
-The sequential shape exists only to satisfy the ISSUE-004 containment guard:
-fixed-width values cannot nest. With that runtime issue resolved the constraint
-can go, and `find_contained_literals` becomes an opt-in check.
+### Applied to the standard workloads
+
+The generator now carries the entropy each value type has in production: random
+for credentials, infrastructure and financial numbers; variable-length and
+unnumbered for names, emails and addresses; **still sequential** for issued
+reference numbers, because a billing system really does count invoices and
+randomising those would be the same error inverted.
+
+| | distinct 4-byte openings | mean shared prefix | matches/KB | rule coverage |
+|---|---|---|---|---|
+| enterprise-dlp, before | 375 | 14.46 | 0.129 | 0.769 |
+| enterprise-dlp, after | **1,518** | **8.94** | 0.128 | 0.773 |
+| database-export, before | 88 | 9.88 | 21.27 | 0.984 |
+| database-export, after | **1,220** | **6.92** | 21.93 | 0.987 |
+
+Density and coverage are unchanged, so the corpora ask for the same amount of
+matching work; only the shape of the catalog changed. Both figures are recorded
+per run in the manifest's `catalog_profile`, so a result can be read against the
+policy that produced it.
+
+The sequential shape existed to satisfy the ISSUE-004 containment guard:
+fixed-width values cannot nest. Variable-width values can, so the invariant moved
+to where it can be held without dictating value shapes - the catalog builder
+skips a value that nests with one already accepted for the same type, and the
+whole-catalog check remains, with `policy.allow_contained_literals` to accept a
+catalog that deliberately contains such a pair.
 
 **Noise entropy is not the lever, and cannot be.** Real documents are prose or
 structured records. The random-ASCII filler in the stress generator is
